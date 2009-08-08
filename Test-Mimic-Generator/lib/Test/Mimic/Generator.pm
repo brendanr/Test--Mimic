@@ -210,7 +210,9 @@ Brendan Roof, E<lt>broof@whitepages.comE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2009 by Whitepages, Inc.
+Copyright (C) 2009 by Brendan Roof.
+
+Made possible by a generous contribution from WhitePages, Inc.
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself, either Perl version 5.8.8 or,
