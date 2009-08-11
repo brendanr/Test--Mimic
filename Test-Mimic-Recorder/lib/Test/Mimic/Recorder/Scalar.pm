@@ -27,7 +27,7 @@ sub FETCH {
     
     my $value = $self->[VALUE];
     if ( ! $Test::Mimic::Recorder::Recording ) {
-        push( @{ $self->[HISTORY] }, Test::Mimic::Recorder::_Implementation::_watch( $self->[RECORDS], $value ) );
+        push( @{ $self->[HISTORY] }, Test::Mimic::Recorder::_Implementation::_monitor( $self->[RECORDS], $value ) );
     }
     
     return $value;

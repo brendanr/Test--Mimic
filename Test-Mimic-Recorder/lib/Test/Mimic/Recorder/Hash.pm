@@ -13,10 +13,9 @@ use constant {
     
     # History fields
     FETCH_F     => 0,
-    FIRSTKEY_F  => 1,
-    NEXTKEY_F   => 2,
-    EXISTS_F    => 3,
-    SCALAR_F    => 4,
+    KEYS_F      => 1,
+    EXISTS_F    => 2,
+    SCALAR_F    => 3,
 };
 
 sub TIEHASH {
@@ -29,7 +28,7 @@ sub TIEHASH {
     for my $field ( FETCH_F, EXISTS_F ) {
         $history->[$field] = {};
     }
-    for my $field ( FIRSTKEY_F, NEXTKEY_F, SCALAR_F ) {
+    for my $field ( KEYS_F, SCALAR_F ) {
         $history->[$field] = [];
     }
     $self->[HISTORY] = $history;
@@ -49,7 +48,7 @@ sub FETCH {
     my $value = $self->[VALUE]->{$key};
     if ( ! $Test::Mimic::Recorder::SuspendRecording ) {
         my $key_history = ( $self->[HISTORY]->[FETCH_F]->{$key} ||= [] ); 
-        push( @{$key_history}, Test::Mimic::Recorder::_Implementation::_watch( $self->[RECORDS], $value ) );
+        push( @{$key_history}, Test::Mimic::Recorder::_Implementation::_monitor( $self->[RECORDS], $value ) );
     }
     
     return $value;
@@ -58,13 +57,8 @@ sub FETCH {
 sub FIRSTKEY {
     my ($self) = @_;
     
-    scalar keys %{ $self->[VALUE] }; # Reset hash iterator.
-    my $key = each %{ $self->[VALUE] };
-    if ( ! $Test::Mimic::Recorder::SuspendRecording ) {
-        push( @{ $self->[HISTORY]->[FIRSTKEY_F] }, Test::Mimic::Recorder::_Implementation::_watch( $self->[RECORDS], $key ) );
-    }
-    
-    return $key;
+    keys %{ $self->[VALUE] }; # Reset hash iterator.
+    return $self->NEXTKEY($self);
 }
 
 sub NEXTKEY {
@@ -72,7 +66,8 @@ sub NEXTKEY {
     
     my $key = each %{ $self->[VALUE] };
     if ( ! $Test::Mimic::Recorder::SuspendRecording ) {
-        push( @{ $self->[HISTORY]->[NEXTKEY_F] }, Test::Mimic::Recorder::_Implementation::_watch( $self->[RECORDS], $key ) ); 
+        #push( @{ $self->[HISTORY]->[KEYS_F] }, Test::Mimic::Recorder::_Implementation::_monitor( $self->[RECORDS], $key ) ); 
+        push( @{ $self->[HISTORY]->[KEYS_F] }, $key ); 
     }
     
     return $key;
@@ -84,7 +79,8 @@ sub EXISTS {
     my $result = exists $self->[VALUE]->{$key};
     if ( ! $Test::Mimic::Recorder::SuspendRecording ) {
         my $exists_history = ( $self->[HISTORY]->[EXISTS_F]->{$key} ||= [] );
-        push( @{$exists_history}, Test::Mimic::Recorder::_Implementation::_watch( $self->[RECORDS], $result ) );
+        #push( @{$exists_history}, Test::Mimic::Recorder::_Implementation::_monitor( $self->[RECORDS], $result ) );
+        push( @{$exists_history}, $result );
     }
     
     return $result;
@@ -103,7 +99,8 @@ sub SCALAR {
     
     my $result = scalar %{ $self->[VALUE] };
     if ( ! $Test::Mimic::Recorder::SuspendRecording ) {
-        push( @{ $self->[HISTORY]->[SCALAR_F] }, Test::Mimic::Recorder::_Implementation::_watch( $self->[RECORDS], $result ) );
+        #push( @{ $self->[HISTORY]->[SCALAR_F] }, Test::Mimic::Recorder::_Implementation::_monitor( $self->[RECORDS], $result ) );
+        push( @{ $self->[HISTORY]->[SCALAR_F] }, $result );
     }
     
     return $result;

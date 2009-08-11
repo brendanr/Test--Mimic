@@ -39,7 +39,7 @@ sub FETCH {
     my $value = $self->[VALUE]->[$index];
     if ( ! $Test::Mimic::Recorder::SuspendRecording ) {
         my $index_history = ( $self->[HISTORY]->[FETCH_F]->[$index] ||= [] );
-        push( @{$index_history}, Test::Mimic::Recorder::_Implementation::_watch( $self->[RECORDS],
+        push( @{$index_history}, Test::Mimic::Recorder::_Implementation::_monitor( $self->[RECORDS],
             $value ) );
     }
     
@@ -57,8 +57,9 @@ sub FETCHSIZE {
     
     my $size = scalar( @{ $self->[VALUE] } );
     if ( ! $Test::Mimic::Recorder::SuspendRecording ) {
-        push( @{ $self->[HISTORY]->[FETCHSIZE_F] }, Test::Mimic::Recorder::_Implementation::_watch(
-            $self->[RECORDS], $size ) );
+        #push( @{ $self->[HISTORY]->[FETCHSIZE_F] }, Test::Mimic::Recorder::_Implementation::_monitor(
+        #    $self->[RECORDS], $size ) );
+        push( @{ $self->[HISTORY]->[FETCHSIZE_F] }, $size );
     }
     
     return $size;
@@ -83,8 +84,9 @@ sub EXISTS {
     my $result = exists $self->[VALUE]->[$index];
     if ( ! $Test::Mimic::Recorder::SuspendRecording ) {
         my $exists_history = ( $self->[HISTORY]->[EXISTS_F]->[$index] ||= [] );
-        push( @{$exists_history}, Test::Mimic::Recorder::_Implementation::_watch( $self->[RECORDS],
-            $result ) );
+        #push( @{$exists_history}, Test::Mimic::Recorder::_Implementation::_monitor( $self->[RECORDS],
+        #    $result ) );
+        push( @{$exists_history}, $result );
     }
     
     return $result;

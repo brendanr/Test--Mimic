@@ -205,7 +205,7 @@ for my $call ( @{$order} ) {
 
 # Check a reference
 
-my $hash_history = $references->[7]->[1]->[0]; # 7 is simply the index of a particular reference
+my $hash_history = $references->[12]->[1]->[0]; # 12 is simply the index of a particular reference
 for my $key ( 'Beer', 'Gangsters', 'Ojos Sexys', 'Spiderwebs' ) {
     ok( exists( $hash_history->{$key} ), "$key Key found." );
 }

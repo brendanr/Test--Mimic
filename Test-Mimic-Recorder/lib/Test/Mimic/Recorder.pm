@@ -29,13 +29,14 @@ my %typeglobs;  # Contains recorded data for scalars, arrays, hashes and subrout
 my %extra;      # Currently contains only a flattened class hierarchy for each recorded class at
                 # $extra{$class}{'ISA'} as a hash ref. $extra{$recorded_class}{'ISA'}{$other_class} will
                 # exist iff $recorded_class isa $other_class.
-my @operation_sequence; # An ordered list of recorded operations. The first operation happened first, the second
-                        # operation happened second and so forth. This currently only includes subroutine calls in
-                        # recorded packages. Orderings of various 'scopes' can later be extracted from this.
+my @operation_sequence; # An ordered list of recorded operations. The first operation happened first, the
+                        # second operation happened second and so forth. This currently only includes
+                        # subroutine calls in recorded packages. Orderings of various 'scopes' can later be
+                        # extracted from this.
 
 sub import {
     die "import should only be used as a method."
-        if ( $_[0] ne 'Test::Mimic::Recorder' );
+        if ( ! $_[0]->isa('Test::Mimic::Recorder') );
 
     if ( @_ == 1 ) { # We are using Test::Mimic::Recorder as a library, not to actively monitor a program.
         $done_writing = 1;
@@ -66,20 +67,20 @@ sub import {
 # Because of this that may not really be a problem.
 # The entries in globs can not be tied. A special glob tie could potentially remedy this, but
 # this does not currently exist.
-sub wrap {
+sub encode {
     my ( $records, $val, $is_volatile, $at_level ) = @_;
     my ( $references, $address_to_index, $alive ) = @{$records};
     
-    return Test::Mimic::Recorder::_Implementation::_wrap_then_watch( $records, $val, $at_level );
+    return Test::Mimic::Recorder::_Implementation::_encode( $records, $val, $at_level );
 }
 
-# Given a wrapped element returns a string version. Should be suitable for use as a key in a hash as well as
+# Given an encoded element returns a string version. Should be suitable for use as a key in a hash as well as
 # being invertible with destringify. Subclass Test::Mimic::Recorder to stringify with your preferred library.
 #
 # TODO: Will need to use SortKeys from Data::Dump::Streamer if we start allowing unblessed hashes to be
-# wrapped. This is necessary because they may be used in an argument list and these need to match exactly
-# from recording to playback. _wrap_then_watch currently will wrap hashes, but the only times we wrap as
-# opposed to watch are in argument lists and return lists (and only for one 'level'), so this is not at
+# encoded. This is necessary because they may be used in an argument list and these need to match exactly
+# from recording to playback. _encode currently will encode hashes, but the only places where we encode as
+# opposed to monitor are in argument lists and return lists (and only for one 'level'), so this is not at
 # present a problem.
 sub stringify {
     my ($val) = @_;
@@ -98,7 +99,7 @@ sub finish {
 package Test::Mimic::Recorder::_Implementation;
 
 use Devel::EvalError ();
-use Scalar::Util qw<blessed refaddr reftype weaken>;
+use Scalar::Util qw<blessed refaddr reftype weaken readonly>;
 
 use constant {
     # Array indices for the three contexts
@@ -116,7 +117,7 @@ use constant {
     FORMAT      => 106,
     REG_EXP     => 107,
     
-    # Description of wrapped data
+    # Description of encoded data
     STABLE      => 200,
     VOLATILE    => 201,
     OBJECT      => 202,
@@ -135,6 +136,14 @@ use constant {
     ARRAY_E     => 502,
     HASH_E      => 503,
 };
+
+# Create a set containing the scalar types.
+my %SCALAR_TYPES = (
+    'SCALAR'    =>  ARBITRARY,
+    'REF'       =>  ARBITRARY,
+    'LVALUE'    =>  ARBITRARY,
+    'VSTRING'   =>  ARBITRARY,
+);   
 
 # Transient data. Will not be written to disk.
 my %address_to_index;
@@ -165,7 +174,7 @@ sub _record_package {
         for my $slot ( 'ARRAY', 'HASH' ) {
             my $reference = *{$typeglob}{$slot};
             if ( defined $reference ) {
-                $fake_typeglob->{$slot} = Test::Mimic::Recorder::wrap( $records, $reference, 1, 0 );
+                $fake_typeglob->{$slot} = Test::Mimic::Recorder::encode( $records, $reference, 1, 0 );
             }
         }
     }
@@ -187,15 +196,14 @@ sub _record_package {
     # Tie all scalars.
     for my $scalar ( keys %all_scalars ) {
         $fake_package->{$scalar}->{'SCALAR'} =
-            Test::Mimic::Recorder::wrap( $records, *{$symbol_table->{$scalar}}{'SCALAR'}, 1, 0 );
+            Test::Mimic::Recorder::encode( $records, *{$symbol_table->{$scalar}}{'SCALAR'}, 1, 0 );
     }
     
     #Handle inheritance issues regarding both isa and can.
     my ( $full_ISA, $all_subs ) = _get_hierarchy_info($package);
     $extra{$package}{'ISA'} = $full_ISA; 
  
-    # Wrap all subroutines. (Not in the sense of the wrap method above, but rather redefine each subroutine
-    # to record the operation of the original.)
+    # Wrap all subroutines. (Or rather, redefine each subroutine to record the operation of the original.)
     for my $sub ( keys %{$all_subs} ) {
         my $original_sub = $package->can($sub);
         my $record_to = ( $fake_package->{$sub}->{'CODE'} ||= {} );
@@ -209,10 +217,10 @@ sub _record_package {
             }
             
             # TODO: Query user settings regarding the volatility of the arguments.
-            my $wrapped_args = Test::Mimic::Recorder::wrap( $records, \@_, 1, 1 );
+            my $encoded_args = Test::Mimic::Recorder::_Implementation::_encode_aliases( $records, \@_ );
             
             # Set up the recording storage for this call.
-            my $arg_key = Test::Mimic::Recorder::stringify($wrapped_args);
+            my $arg_key = Test::Mimic::Recorder::stringify($encoded_args);
             my $context_to_result = ( $record_to->{$arg_key} ||= [] );
             
             # Make actual call, trap exceptions or store return.
@@ -231,13 +239,13 @@ sub _record_package {
                         $context_index = LIST_CONTEXT;
                         @results = &{$original_sub};
                         $stored_result =
-                            [ RETURN, Test::Mimic::Recorder::wrap( $records, \@results, 1, 1) ];
+                            [ RETURN, Test::Mimic::Recorder::encode( $records, \@results, 1, 1) ];
                     }
                     elsif (defined $context) {
                         $context_index = SCALAR_CONTEXT;
                         $results[0] = &{$original_sub};
                         $stored_result =
-                            [ RETURN, Test::Mimic::Recorder::wrap( $records, $results[0], 1, 0 ) ];
+                            [ RETURN, Test::Mimic::Recorder::encode( $records, $results[0], 1, 0 ) ];
                     }
                     else {
                         $context_index = VOID_CONTEXT;
@@ -250,7 +258,7 @@ sub _record_package {
             $failed = $eval_error->Failed();
             if ( $failed ) {
                 $exception = ( $eval_error->AllReasons() )[-1];
-                $stored_result = [ EXCEPTION, Test::Mimic::Recorder::wrap( $records, $exception, 1, 0 ) ];
+                $stored_result = [ EXCEPTION, Test::Mimic::Recorder::encode( $records, $exception, 1, 0 ) ];
             }
             
             # Maintain records
@@ -280,6 +288,34 @@ sub _record_package {
         }
     }
 }
+
+# aliases act like references, but look like simple scalars. Because of this we have to be particularly
+# cautious where they could appear. Barring XS code and the sub{\@_} construction we only need to worry
+# about subroutine arguments, i.e. $_[i].
+#
+# _encode_aliases accepts a list of aliases and returns an encoded form of the list. This will be suitable
+# for stringification. All aliases that are not read only will be _monitored. If necessary, _decode_aliases,
+# not _decode, should be used. 
+sub _encode_aliases {
+    my ( $records, $aliases ) = @_;
+
+    my @coded;
+    for my $alias ( @{$aliases} ) {
+        if ( readonly($alias) ) {
+            push( @coded, [ STABLE, $alias ] );
+        } else {
+            push( @coded, _monitor($records, \$alias ) );
+        }
+    }
+    return [ NESTED, [ ARRAY, \@coded ] ];
+}
+
+# The inverse of _encode_aliases.
+# The elements of the returned array (reference?) will not be true aliases. Instead they will be scalars
+# containing the current value of the encoded aliases.
+sub _decode_aliases {
+    die "_decode_aliases has not yet been implemented.";
+}   
 
 # Accepts a class name. Returns the class hierarchy flattened into a hash ref and a list of all subroutines
 # the class responds too (including inherited subroutines, excluding AUTOLOADED subroutines) also as a hash
@@ -329,8 +365,10 @@ sub _is_pattern {
     return Data::Dump::Streamer::regex($_[0]);
 }
 
-# Watches if possible (recursively as needed), otherwise returns the single element wrap.
-sub _watch {
+# Monitor, i.e. tie the value and record its state, if possible (recursively as needed), otherwise merely
+# encapsulate the value as well as possible. In the second case proper storage and retrivial of the data
+# becomes the responsibility of Test::Mimic::Recorder::stringify. 
+sub _monitor {
     my ( $records, $val ) = @_;
     my ( $references, $address_to_index, $alive ) = @{$records};
     
@@ -341,7 +379,11 @@ sub _watch {
     else {
         my $address = refaddr($val);
         my $index;
-        if ( defined( $alive->{$address} ) ) {  # If we are watching this reference...
+        if ( defined( $alive->{$address} ) ) {      # If we are watching this reference...
+
+            # NOTE: We are using defined as opposed to exists because a given address can be used by multiple
+            # references over the entire execution of the program. See the comment on weaken below.
+
             $index = $address_to_index->{$address};
         }
         else {
@@ -353,10 +395,11 @@ sub _watch {
             # Create a representation of the reference depending on its type.
             # Watches recursively as necessary via the tie.
             my $reference;
-            if ( Test::Mimic::Recorder::_Implementation::_is_pattern($val) ) {
+            if ( _is_pattern($val) ) {
                 $reference = [ REG_EXP, $val ];
             }        
-            elsif ( $type eq 'SCALAR' || $type eq 'REF' || $type eq 'LVALUE' || $type eq 'VSTRING' ) {
+            elsif ( exists( $SCALAR_TYPES{$type} ) ) { # If $type is a scalar type...
+            
                 my $history = [];
                 tie( ${$val}, 'Test::Mimic::Recorder::Scalar', $records, $history, ${$val} );
                 $reference = [ SCALAR, $history ];                                                          
@@ -376,8 +419,8 @@ sub _watch {
             }
             
             # Store the representation of the reference into the references table.
-            $index = $address_to_index->{$address} = $#{$references} + 1;
-            $references->[$index] = $reference;
+            push( @{$references}, $reference );
+            $index = $address_to_index->{$address} = $#{$references};
         }
         my $class = blessed($val);
         return $class ? [ OBJECT, $class, $index ] : [ VOLATILE, $index ];
@@ -400,15 +443,15 @@ sub _watch {
 # Idea: Scan through structure. Record all references in a big hash. If we see duplicates note them.
 # The duplicates will exist as a special structure.
 #
-# [ CIRCULAR_NESTED, <dupe_table>, [ ARRAY, blah...
+# [ CIRCULAR_NESTED, <dup_table>, [ ARRAY, blah...
 # We have one additional type:
-# [ DUPE, <index> ]
-sub _wrap_then_watch {
+# [ DUP, <index> ]
+sub _encode {
     my ( $records, $val, $at_level ) = @_;
     my ( $references, $address_to_index, $alive ) = @{$records};
     
     if ( $at_level == 0 ) { # If we have reached the volatile layer...
-        return _watch( $records, $val );
+        return _monitor( $records, $val );
     }
     else {
         $at_level--;
@@ -419,32 +462,26 @@ sub _wrap_then_watch {
         return [ STABLE, $val ]; 
     }
     else {
-        my $wrap;
-        if ( Test::Mimic::Recorder::_Implementation::_is_pattern($val) ) {
-            $wrap = [ REG_EXP, $val ];
+        my $coded;
+        if ( _is_pattern($val) ) {
+            $coded = [ REG_EXP, $val ];
         }        
-        elsif ( $type eq 'SCALAR' || $type eq 'REF' || $type eq 'LVALUE' || $type eq 'VSTRING' ) {
-            $wrap = [ SCALAR, _wrap_then_watch( $records, ${$val}, $at_level ) ];                                                          
-        }
+        elsif ( exists( $SCALAR_TYPES{$type} ) ) { # If $type is a scalar type...
+            $coded = [ SCALAR, _monitor( $records, ${$val}, $at_level ) ];                                                    }
         elsif ( $type eq 'ARRAY' ) {
-            my @temp;
-            for my $element ( @{$val} ) {
-                push( @temp, _wrap_then_watch( $records, $element, $at_level ) );
-            }
-            $wrap = [ ARRAY, \@temp ];
+            my @temp = map( { _monitor( $records, $_, $at_level ) } @{$val} );
+            $coded = [ ARRAY, \@temp ];
         }
         elsif ( $type eq 'HASH' ) {
             my %temp;
-            for my $key ( keys %{$val} ) {
-                $temp{$key} = _wrap_then_watch( $records, $val->{$key}, $at_level );
-            }
-            $wrap = [ HASH, \%temp];
+            @temp{ keys %{$val} } = map( { _monitor( $records, $val->{$_}, $at_level ) } keys %{$val} );
+            $coded = [ HASH, \%temp];
         }
         else {
-            $wrap = _handle_simple_types( $val, $type );
+            $coded = _handle_simple_types( $val, $type );
         }
         
-        return [ NESTED, $wrap ];
+        return [ NESTED, $coded ];
     }
 }
 
@@ -470,54 +507,6 @@ sub _handle_simple_types {
     }
     
     return $container;
-}
-
-# Untested and deprecated. It no longer looks like this will be necessary.
-#
-# Returns the depth of the shallowest blessed reference or undefined if no blessed reference is found.
-# The passed reference must not be to a structure containing any circular links.
-sub _contains_blessed {
-    my ($val) = @_;
-    
-    my $type = reftype($val);
-    if ( ! $type) {
-        return undef;
-    }
-    else {
-        if ( blessed($val) ) {
-            return 0;
-        }
-        else {
-            if ( $type eq 'REF' ) {
-                my $depth = _contains_blessed(${$val});
-                return defined $depth ? $depth + 1 : undef;
-            }
-            elsif ( $type eq 'HASH' ) {
-                my @key_list = keys %{$val};
-                my $min = _contains_blessed( $val->{ shift(@key_list) } );
-                for my $key (@key_list) {
-                    my $depth = _contains_blessed( $val->{$key} );
-                    if ( defined $depth && $depth < $min ) {
-                        $min = $depth;
-                    }
-                }
-                return defined $min ? $min + 1 : undef;
-            }
-            elsif ( $type eq 'ARRAY' ) {
-                my $min = _contains_blessed( $val->[0] );
-                for ( my $i = 1; $i < @{$val}; $i++ ) {
-                    my $depth = _contains_blessed( $val->[$i] );
-                    if ( defined $depth && $depth < $min ) {
-                        $min = $depth;
-                    }
-                }
-                return defined $min ? $min + 1 : undef;
-            }
-            else { #This doesn't handle globs, but this is irrelevant until wrap handles them fully.
-                return undef;
-            }
-        }
-    }
 }
 
 # Write recording to disk
@@ -599,13 +588,13 @@ call these subroutines.
 
 =over 4
 
-=item wrap($records, $value, $is_volatile, $at_level )
+=item encode($records, $value, $is_volatile, $at_level )
 
 $records is an array reference initially containing [ [], {}, {} ]. The same $records variable should be used
 during a given recording session. In a playback session only the first element must be from a recording
 session (or rather reconstructed from a recording session). The hash references can again initially be {}.
 
-$value can be either a reference or a simple scalar. wrap will attempt to encapsulate
+$value can be either a reference or a simple scalar. encode will attempt to encapsulate
 the value in such a manner that it can be stringified safely. This encapsulated value is returned as an array
 reference.
 
@@ -613,7 +602,7 @@ Care is taken to preserve the uniqueness of references (specifically blessed ref
 behavior of subroutines dependent on particular references is preserved as well. The obvious use of this is
 to allow object methods to be handled properly.
 
-When a mutable reference is wrapped we will begin recording a history of its dereferenced value. This allows
+When a mutable reference is encoded we will begin recording a history of its dereferenced value. This allows
 the user to recreate (approximately) the state of the reference over time. This process is recursive and even
 complex nested and circular structures should be handled.
 
@@ -623,9 +612,9 @@ be expected. For instance, a level of 0 would mean that the passed value itself 
 array reference was passed along with a level of 1 then the elements of the array would be monitored.
 Additionally, any circular references need to be handled as mutable data.
 
-=item unwrap
+=item decode
 
-The inverse of wrap.
+The inverse of encode.
 
 =back
 
