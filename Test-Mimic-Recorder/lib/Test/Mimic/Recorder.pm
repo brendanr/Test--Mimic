@@ -399,7 +399,6 @@ sub _monitor {
                 $reference = [ REG_EXP, $val ];
             }        
             elsif ( exists( $SCALAR_TYPES{$type} ) ) { # If $type is a scalar type...
-            
                 my $history = [];
                 tie( ${$val}, 'Test::Mimic::Recorder::Scalar', $records, $history, ${$val} );
                 $reference = [ SCALAR, $history ];                                                          
