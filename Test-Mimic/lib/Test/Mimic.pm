@@ -13,7 +13,12 @@ my @references;
 my @operation_sequence;
 
 sub import {
-    
+    local @INC = qw< .tmlib >;
+
+    for my $package_to_mimic (@_) {
+        eval( "require $package_to_mimc; 1" )
+            or die "Unable to require mimicked package <$package_to_mimic> from <@INC>: $@";
+    }
 }
 
 sub check_recorded {
@@ -26,7 +31,7 @@ sub get_references {
 }
 
 sub execute {
-    
+    my ( $behavior, $order_scope,  
 }
 
 1;

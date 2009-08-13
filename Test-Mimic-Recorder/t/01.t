@@ -222,12 +222,12 @@ for my $key ( 'Gangsters', 'Ojos Sexys', 'Spiderwebs' ) {
 }
 
 # Check a glob
-
-my $key = "\$ARRAY1 = [\n            203,\n            [\n              101,\n          " .
-    "    [\n                [\n                  200,\n                  'Record".
-    "Me'\n                ],\n                [\n                  200,\n        ".
-    "          'Does this return grandma?'\n                ]\n              ]\n".
-    "            ]\n          ];\n"; # So brittle...
+my $key = "\$ARRAY1 = [\n            202,\n            [\n              'ARRAY',\n      ".
+    "        [\n                [\n                  200,\n                  'Re".
+    "cordMe'\n                ],\n                [\n                  200,\n    ".
+    "              'Does this return grandma?'\n                ]\n            ".
+    "  ]\n            ]\n          ];\n";   # So very very very brittle... (The number of very's is the number
+                                            # of times this code has bitten me in the ass.)
 
 my $table = $typeglobs;
 for my $info ( [ 'RecordMe', 'Package' ], [ 'grandma', 'Symbol' ], [ 'CODE', 'Code' ], [ $key, 'Arg' ] ) {

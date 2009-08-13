@@ -8,7 +8,8 @@ use strict;
 use warnings;
 
 use Getopt::Long qw<GetOptionsFromArray>;
-use Data::Dump::Streamer;
+#use Data::Dump::Streamer;
+use Devel::EvalError ();
 
 use Test::Mimic::Recorder::Scalar;
 use Test::Mimic::Recorder::Array;
@@ -69,9 +70,15 @@ sub import {
 # this does not currently exist.
 sub encode {
     my ( $records, $val, $is_volatile, $at_level ) = @_;
-    my ( $references, $address_to_index, $alive ) = @{$records};
+    # NOTE: $is_volatile is currently ignored, but we are likely to use it in the future.
     
     return Test::Mimic::Recorder::_Implementation::_encode( $records, $val, $at_level );
+}
+
+sub decode {
+    my ( $records, $coded_val ) = @_;
+
+    return Test::Mimic::Recorder::_Implementation::_decode( $records, $coded_val );
 }
 
 # Given an encoded element returns a string version. Should be suitable for use as a key in a hash as well as
@@ -95,55 +102,6 @@ sub finish {
         or die "Unable to write: $!";
     close($fh) or die "Unable to close file: $!";
 }
-
-package Test::Mimic::Recorder::_Implementation;
-
-use Devel::EvalError ();
-use Scalar::Util qw<blessed refaddr reftype weaken readonly>;
-
-use constant {
-    # Array indices for the three contexts
-    SCALAR_CONTEXT  => 0,
-    LIST_CONTEXT    => 1,
-    VOID_CONTEXT    => 2,
-    
-    # Reference types
-    SCALAR      => 100, # SCALAR includes REF, LVALUE and VSTRING.
-    ARRAY       => 101,
-    HASH        => 102,
-    CODE        => 103,
-    IO          => 104,
-    GLOB        => 105,
-    FORMAT      => 106,
-    REG_EXP     => 107,
-    
-    # Description of encoded data
-    STABLE      => 200,
-    VOLATILE    => 201,
-    OBJECT      => 202,
-    NESTED      => 203,
-    
-    # The two types of supported behavior
-    RETURN      => 300,
-    EXCEPTION   => 301,
-    
-    # Convenience values
-    ARBITRARY   => 400, # For merely creating hash entries
-    
-    # Event types
-    CODE_E      => 500,
-    SCALAR_E    => 501,
-    ARRAY_E     => 502,
-    HASH_E      => 503,
-};
-
-# Create a set containing the scalar types.
-my %SCALAR_TYPES = (
-    'SCALAR'    =>  ARBITRARY,
-    'REF'       =>  ARBITRARY,
-    'LVALUE'    =>  ARBITRARY,
-    'VSTRING'   =>  ARBITRARY,
-);   
 
 # Transient data. Will not be written to disk.
 my %address_to_index;
@@ -289,34 +247,6 @@ sub _record_package {
     }
 }
 
-# aliases act like references, but look like simple scalars. Because of this we have to be particularly
-# cautious where they could appear. Barring XS code and the sub{\@_} construction we only need to worry
-# about subroutine arguments, i.e. $_[i].
-#
-# _encode_aliases accepts a list of aliases and returns an encoded form of the list. This will be suitable
-# for stringification. All aliases that are not read only will be _monitored. If necessary, _decode_aliases,
-# not _decode, should be used. 
-sub _encode_aliases {
-    my ( $records, $aliases ) = @_;
-
-    my @coded;
-    for my $alias ( @{$aliases} ) {
-        if ( readonly($alias) ) {
-            push( @coded, [ STABLE, $alias ] );
-        } else {
-            push( @coded, _monitor($records, \$alias ) );
-        }
-    }
-    return [ NESTED, [ ARRAY, \@coded ] ];
-}
-
-# The inverse of _encode_aliases.
-# The elements of the returned array (reference?) will not be true aliases. Instead they will be scalars
-# containing the current value of the encoded aliases.
-sub _decode_aliases {
-    die "_decode_aliases has not yet been implemented.";
-}   
-
 # Accepts a class name. Returns the class hierarchy flattened into a hash ref and a list of all subroutines
 # the class responds too (including inherited subroutines, excluding AUTOLOADED subroutines) also as a hash
 # ref. An arbitrary element will exist in the proper hash iff the class isa element or the class can element
@@ -358,154 +288,6 @@ sub _get_hierarchy_info {
     }
     
     return ( \%full_ISA, \%full_subs );
-}
-
-# Accepts a single argument. Returns true iff the argument is a regular expression created by qr.
-sub _is_pattern {
-    return Data::Dump::Streamer::regex($_[0]);
-}
-
-# Monitor, i.e. tie the value and record its state, if possible (recursively as needed), otherwise merely
-# encapsulate the value as well as possible. In the second case proper storage and retrivial of the data
-# becomes the responsibility of Test::Mimic::Recorder::stringify. 
-sub _monitor {
-    my ( $records, $val ) = @_;
-    my ( $references, $address_to_index, $alive ) = @{$records};
-    
-    my $type = reftype($val);
-    if ( ! $type ) { # If this is not a reference...
-        return [ STABLE, $val ];
-    }
-    else {
-        my $address = refaddr($val);
-        my $index;
-        if ( defined( $alive->{$address} ) ) {      # If we are watching this reference...
-
-            # NOTE: We are using defined as opposed to exists because a given address can be used by multiple
-            # references over the entire execution of the program. See the comment on weaken below.
-
-            $index = $address_to_index->{$address};
-        }
-        else {
-            # Note that we are watching the reference.
-            $alive->{$address} = $val;
-            weaken( $alive->{$address} );   # This reference will be automatically set to undef when $$val is
-                                            # garbage collected.
-            
-            # Create a representation of the reference depending on its type.
-            # Watches recursively as necessary via the tie.
-            my $reference;
-            if ( _is_pattern($val) ) {
-                $reference = [ REG_EXP, $val ];
-            }        
-            elsif ( exists( $SCALAR_TYPES{$type} ) ) { # If $type is a scalar type...
-                my $history = [];
-                tie( ${$val}, 'Test::Mimic::Recorder::Scalar', $records, $history, ${$val} );
-                $reference = [ SCALAR, $history ];                                                          
-            }
-            elsif ( $type eq 'ARRAY' ) {
-                my $history = [];
-                tie ( @{$val}, 'Test::Mimic::Recorder::Array', $records, $history, $val );
-                $reference = [ ARRAY, $history ];
-            }
-            elsif ( $type eq 'HASH' ) {
-                my $history = [];
-                tie ( %{$val}, 'Test::Mimic::Recorder::Hash', $records, $history, $val );
-                $reference = [ HASH, $history ];
-            }
-            else {
-                $reference = _handle_simple_types( $val, $type );
-            }
-            
-            # Store the representation of the reference into the references table.
-            push( @{$references}, $reference );
-            $index = $address_to_index->{$address} = $#{$references};
-        }
-        my $class = blessed($val);
-        return $class ? [ OBJECT, $class, $index ] : [ VOLATILE, $index ];
-    }
-    die "We should never reach this point.";    
-}
-
-# Performs an expansion wrap on the passed value until the given level then watches every component below.
-# Returns a structure analogous to the original except that each component is recursively wrapped. This should
-# only be used on static data. If circular references exist above the watch level or into the wrap level the
-# behavior is undefined.
-#
-# For example if _watch was passed an array it would perhaps return [ VOLATILE, 453 ].
-# _wrap_then_watch would return [ NESTED, [ ARRAY, [ [ STABLE, 'foo' ], [ STABLE, 'bar' ] ] ] ]
-#
-# This is useful when the data currently in the array is important, but the array itself has no special
-# significance.
-#
-# TODO: Handle circular references, also save space on DAGs.
-# Idea: Scan through structure. Record all references in a big hash. If we see duplicates note them.
-# The duplicates will exist as a special structure.
-#
-# [ CIRCULAR_NESTED, <dup_table>, [ ARRAY, blah...
-# We have one additional type:
-# [ DUP, <index> ]
-sub _encode {
-    my ( $records, $val, $at_level ) = @_;
-    my ( $references, $address_to_index, $alive ) = @{$records};
-    
-    if ( $at_level == 0 ) { # If we have reached the volatile layer...
-        return _monitor( $records, $val );
-    }
-    else {
-        $at_level--;
-    }
-    
-    my $type = reftype($val);
-    if ( ! $type ) { # If the value is not a reference...
-        return [ STABLE, $val ]; 
-    }
-    else {
-        my $coded;
-        if ( _is_pattern($val) ) {
-            $coded = [ REG_EXP, $val ];
-        }        
-        elsif ( exists( $SCALAR_TYPES{$type} ) ) { # If $type is a scalar type...
-            $coded = [ SCALAR, _monitor( $records, ${$val}, $at_level ) ];                                                    }
-        elsif ( $type eq 'ARRAY' ) {
-            my @temp = map( { _monitor( $records, $_, $at_level ) } @{$val} );
-            $coded = [ ARRAY, \@temp ];
-        }
-        elsif ( $type eq 'HASH' ) {
-            my %temp;
-            @temp{ keys %{$val} } = map( { _monitor( $records, $val->{$_}, $at_level ) } keys %{$val} );
-            $coded = [ HASH, \%temp];
-        }
-        else {
-            $coded = _handle_simple_types( $val, $type );
-        }
-        
-        return [ NESTED, $coded ];
-    }
-}
-
-# Wraps types that can not be monitored or do not require monitoring.
-sub _handle_simple_types {
-    my ( $val, $type ) = @_;
-    
-    my $container;
-    if ( $type eq 'CODE' ) {
-        $container = [ CODE, $val ];
-    }
-    elsif ( $type eq 'IO' ) {
-        $container = [ IO, $val ];
-    }
-    elsif ( $type eq 'GLOB' ) {
-        $container = [ GLOB, $val ];
-    }
-    elsif ( $type eq 'FORMAT' ) {
-        $container = [ FORMAT, $val ];
-    }
-    else {
-        die "FATAL ERROR: The type of $val is unknown. Unable to watch.";
-    }
-    
-    return $container;
 }
 
 # Write recording to disk
