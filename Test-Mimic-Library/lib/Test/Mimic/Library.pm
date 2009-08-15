@@ -4,6 +4,13 @@ use 5.006001;
 use strict;
 use warnings;
 
+use Test::Mimic::Library::MonitorScalar;
+use Test::Mimic::Library::MonitorArray;
+use Test::Mimic::Library::MonitorHash;
+use Test::Mimic::Library::PlayScalar;
+use Test::Mimic::Library::PlayArray;
+use Test::Mimic::Library::PlayHash;
+
 require Exporter;
 
 our @ISA = qw(Exporter);
@@ -84,38 +91,141 @@ sub _is_pattern {
     return Data::Dump::Streamer::regex( $_[0] );
 }
 
+{
+    my $translator = sub { return 'Will this key cause collisions?'; }; # ;)
+
+    sub gen_arg_key_by {
+        $translator = $_[0];
+    }
+
+    sub gen_arg_key {
+        return &{$translator};
+    }
+}
+
 # aliases act like references, but look like simple scalars. Because of this we have to be particularly
 # cautious where they could appear. Barring XS code and the sub{\@_} construction we only need to worry
 # about subroutine arguments, i.e. $_[i].
 #
-# _encode_aliases accepts a list of aliases and returns an encoded form of the list. This will be suitable
-# for stringification. All aliases that are not read only will be _monitored. We should not ever need to
-# decode the result becuase we are only using it to create a hash key.
-sub monitor_arguments {
+# Accepts a reference to the shared records as well as a reference to an array of aliases,
+# e.g. @_ from another subroutine. It will monitor each alias that is not read-only and return a tuple
+# consisting of the total number of aliases from the array reference as well as a hash reference that takes
+# an index of a mutable element in the array to the result of monitor being called on a reference to said
+# element.
+sub monitor_aliases {
     my ( $records, $aliases ) = @_;
 
-    my $num_args = @{$aliases};
+    my $num_aliases = @{$aliases};
     my %mutable;
-    for ( my $i = 0, $i < $num_args, $i++ ) {
+    for ( my $i = 0; $i < $num_aliases; $i++ ) {
         if ( ! readonly( $aliases->[$i] ) ) {
-            $mutable{$i} = monitor( $records, \$aliases->[$i] ) );
+            $mutable{$i} = monitor( $records, \$aliases->[$i] );
         }
     }
-    return [ NESTED, [ 'ARRAY', \@coded ] ];
+    return [ $num_aliases, \%mutable ];
 }
 
-sub decode_aliases {
-    my ( $records, $coded_aliases ) = @_;
+{
+    # Each of these helper subroutines takes ( $records, $alias, $history ).
+    my $do_nothing = sub {};
+    my %type_to_action = (
+        'REG_EXP'   => $do_nothing,
+        'SCALAR'    => sub { tie( $_[1], 'Test::Mimic::Library::PlayScalar', $_[0], $_[2] ); },
+        'ARRAY'     => sub { tie( $_[1], 'Test::Mimic::Library::PlayArray', $_[0], $_[2] ); },
+        'HASH'      => sub { tie( $_[1], 'Test::Mimic::Library::PlayHash', $_[0], $_[2] ); },
+        'GLOB'      => $do_nothing,
+        'IO'        => $do_nothing,
+        'FORMAT'    => $do_nothing,
+        'CODE'      => $do_nothing,
+    );
 
-    
-    if ( 
+
+    # Accepts a reference to the shared records, an array of aliases and the tuple returned by monitor_aliases.
+    # Attempts to match the aliases in the array reference with those in the tuple. If everything matches the
+    # mutable passed aliases will be tied to behave as those monitored earlier, otherwise dies. The array and
+    # the tuple representing the original array are said to match if the total number of elements are the same
+    # and the mutable elements are the same, i.e. appear at the same indices with matching types.
+    sub play_arguments {
+        my ( $records, $aliases, $coded_aliases ) = @_;
+        my ( $references, $index_to_references ) = @{$records};
+        my ( $orig_num_aliases, $mutable ) = @{$coded_aliases};
+
+        # Apply a primitive signature check, list length.
+        my $cur_num_aliases = @{$aliases};
+        if ( $orig_num_aliases != $cur_num_aliases ) {
+            die "Signatures do not match. Unable to play_arguments from <$coded_aliases> onto <$aliases>.";
+        }
+
+        # Consider each alias, tie the mutable aliases if everything matches, else die.
+        for ( my $i = 0; $i < $cur_num_aliases; $i++ ) { 
+            my $cur_read_only = readonly( $aliases->[$i] );
+            my $orig_read_only = ! exists( $mutable->{$i} );
+
+            if ( $cur_read_only && $orig_read_only ) {  # If they are both read-only they match.
+                next;                                   # We shouldn't try to tie a read-only variable. :)
+            }
+            elsif ( ! $cur_read_only && ! $orig_read_only ) { # If they are both mutable...
+                my $index = $mutable->{$i}->[1]; # See monitor.
+                my ( $type, $history, $old_class ) = $references->[$index];
+
+                if ( _get_type( $aliases->[$i] ) eq $type ) { # They match!
+                    if ( exists( $type_to_action{$type} ) ) {
+                        my $cur_class = blessed( $aliases->[$i] );
+                        if ( defined($cur_class) && defined($old_class) ) {
+                            if ( $cur_class eq $old_class ) {
+                                &{ $type_to_action{$type} }( $records, $aliases->[$i], $history );
+                            }
+                            else {
+                                die "Objects blessed into different packages <$cur_class> and <$old_class>" .
+                                    ". Unable to play_arguments.";
+                            }
+                        }
+                        elsif ( ! defined($cur_class) && ! defined($old_class) ) {
+                           die "One object <$cur_class$old_class> and one unblessed reference. Unable to play.";
+                        }
+                        else {
+                            &{ $type_to_action{$type} }( $records, $aliases->[$i], $history );
+                        }
+                    }
+                    else {
+                        die "Types match, but type <$type> is not recognized. Unable to play_arguments."
+                    }
+                }
+                else {
+                    die "Types do not match. Unable to play_arguments from <$coded_aliases> onto " .
+                        "<$aliases>.";
+                }
+            }
+            else {
+                die "Mutable/immutable mismatch. Unable to play_arguments from <$coded_aliases> onto " .
+                    "<$aliases>.";
+            }
+        }
+    }
+}
+
+sub _get_type {
+    my ($val) = @_;
+
+    if ( _is_pattern($val) ) {
+        return 'REG_EXP';
+    }
+    else {
+        my $type = reftype($val);
+        if ( $type eq 'REF' || $type eq 'LVALUE' || $type eq 'VSTRING' ) {
+            return 'SCALAR';
+        }
+        else {
+            return $type;
+        }
+    }
 }
 
 {
     # Each of these helper subroutines takes ( $records, $val, $type ).
     my $scalar_action = sub {
         my $history = [];
-        tie( ${ $_[1] }, 'Test::Mimic::Library::MonitorScalar', $_[0], $history, ${ $_[1] } );
+        tie( ${ $_[1] }, 'Test::Mimic::Library::MonitorScalar', $_[0], $history, $_[1] );
         return [ 'SCALAR', $history ];
     };
     my $simple_action = sub { return [ $_[2], $_[1] ]; };
@@ -146,9 +256,9 @@ sub decode_aliases {
     # becomes the responsibility of Test::Mimic::Recorder::stringify.
     #
     # Objects are handled, but to a limited extent. The main restriction is that a reference (or rather the
-    # 'object' behind the reference) can not change from being blessed to being unblessed anywhere that _monitor
+    # 'object' behind the reference) can not change from being blessed to being unblessed anywhere that monitor
     # will notice. Purely internal modifications, i.e. those occurring in a wrapped subroutine, are okay.
-    # Additionally, modifications occurring prior to the reference being _monitored are okay. Also, it should be
+    # Additionally, modifications occurring prior to the reference being monitored are okay. Also, it should be
     # noted that references blessed into a package that is not being recorded will have their state recorded
     # properly (including object info), but that object method calls on that reference will still not be
     # recorded.
@@ -203,7 +313,7 @@ sub decode_aliases {
 
 {
     # Each of these helper subroutines takes ( $records, $val, $at_level, $type ).
-    my $scalar_action = sub { return [ 'SCALAR', _encode( $_[0], ${ $_[1] }, $_[2] ) ]; };
+    my $scalar_action = sub { return [ 'SCALAR', encode( $_[0], ${ $_[1] }, $_[2] ) ]; };
     my $simple_action = sub { return [ $_[3], $_[1] ]; };
     my %type_to_action = (
         'REG_EXP'   => $simple_action,
@@ -212,12 +322,12 @@ sub decode_aliases {
         'LVALUE'    => $scalar_action,
         'VSTRING'   => $scalar_action,
         'ARRAY'     => sub {
-            my @temp = map( { _encode( $_[0], $_, $_[2] ) } @{ $_[1] } );
+            my @temp = map( { encode( $_[0], $_, $_[2] ) } @{ $_[1] } );
             return [ 'ARRAY', \@temp ];
         },
         'HASH'      => sub {
             my %temp;
-            @temp{ keys %{ $_[1] } } = map( { _encode( $_[0], $_[1]->{$_}, $_[2] ) } keys %{ $_[1] } );
+            @temp{ keys %{ $_[1] } } = map( { encode( $_[0], $_[1]->{$_}, $_[2] ) } keys %{ $_[1] } );
             return [ 'HASH', \%temp];
         },
         'GLOB'      => $simple_action,
@@ -248,7 +358,7 @@ sub decode_aliases {
         my ( $records, $val, $at_level ) = @_;
 
         if ( $at_level == 0 ) { # If we have reached the volatile layer...
-            return _monitor( $records, $val );
+            return monitor( $records, $val );
         }
         else {
             $at_level--;
@@ -313,7 +423,7 @@ sub decode_aliases {
             }
         }
         elsif ( $code_type == VOLATILE ) {
-            return _play( $records, $data ); 
+            return play( $records, $coded_val ); 
         }
         else {
             die "Invalid code type <$code_type> from <$coded_val> with data <$data>. Unable to decode.";
@@ -347,33 +457,42 @@ sub decode_aliases {
     );
 
     sub play {
-        my ( $records, $index ) = @_;
+        my ( $records, $coded_val ) = @_;
         my ( $references, $index_to_references ) = @{$records};
-
-        if ( exists( $index_to_references->[$index] ) ) {
-            return $index_to_references->[$index];
+        
+        my ( $type, $data ) = @{$coded_val};
+        if ( $type == STABLE ) {
+            return $data;
         }
-        else {
-            my ( $type, $history, $class_name ) = @{ $references->[$index] };
-            
-            my $reference;
-            if ( exists( $type_to_action{$type} ) ) {
-                $reference = &{ $type_to_action{$type} }( $records, $type, $history );;
+        elsif ( $type == VOLATILE ) {
+            if ( exists( $index_to_references->[$data] ) ) {
+                return $index_to_references->[$data];
             }
             else {
-                die "Unknown reference type <$type> at index <$index>. Unable to play.";
+                my ( $type, $history, $class_name ) = @{ $references->[$data] };
+                
+                my $reference;
+                if ( exists( $type_to_action{$type} ) ) {
+                    $reference = &{ $type_to_action{$type} }( $records, $type, $history );
+                }
+                else {
+                    die "Unknown reference type <$type> at index <$data>. Unable to play.";
+                }
+
+                # If this reference is supposed to point at an object, bless it.
+                # This will take place even if we didn't record the class. This may be a feature or a bug.
+                if ( defined($class_name) ) {
+                    bless( $reference, $class_name );
+                }
+
+                # Note the creation of this reference, so we don't recreate it.
+                $index_to_references->{$data} = $reference;
+
+                return $reference;            
             }
-
-            # If this reference is supposed to point at an object, bless it.
-            # This will take place even if we didn't record the class. This may be a feature or a bug.
-            if ( defined($class_name) ) {
-                bless( $reference, $class_name );
-            }
-
-            # Note the creation of this reference, so we don't recreate it.
-            $index_to_references->{$index} = $reference;
-
-            return $reference;            
+        }
+        else {
+            die "Unrecognized type <$type>. Unable to play.";
         }
     }
 }

@@ -8,12 +8,19 @@ use strict;
 use warnings;
 
 use Getopt::Long qw<GetOptionsFromArray>;
-#use Data::Dump::Streamer;
+use Data::Dump::Streamer;
 use Devel::EvalError ();
 
-use Test::Mimic::Recorder::Scalar;
-use Test::Mimic::Recorder::Array;
-use Test::Mimic::Recorder::Hash;
+use Test::Mimic::Library qw(
+    encode
+    RETURN
+    EXCEPTION
+    CODE_E
+    SCALAR_CONTEXT
+    VOID_CONTEXT
+    LIST_CONTEXT
+    ARBITRARY
+);
 
 our $VERSION = 0.001_001;
 our $SuspendRecording = 0; # Turn off recording.
@@ -51,7 +58,7 @@ sub import {
             \@_, 'f=s' => \$save_to, 's=s' => \@scalars,
             '<>' => sub {
                 @scalars = split( /,/, join( ',', @scalars ) );
-                Test::Mimic::Recorder::_Implementation::_record_package( $_[0], @scalars );
+                _record_package( $_[0], @scalars );
             },
         ) or die "Bad options: $!";
         $save_to ||= 'test_mimic.rec';
@@ -69,6 +76,7 @@ sub import {
 # The entries in globs can not be tied. A special glob tie could potentially remedy this, but
 # this does not currently exist.
 sub encode {
+    die "Test::Mimic::Recorder::encode has been superseded by Test::Mimic::Library::encode";
     my ( $records, $val, $is_volatile, $at_level ) = @_;
     # NOTE: $is_volatile is currently ignored, but we are likely to use it in the future.
     
@@ -76,6 +84,7 @@ sub encode {
 }
 
 sub decode {
+    die "Test::Mimic::Recorder::decode has been superseded by Test::Mimic::Library::decode";
     my ( $records, $coded_val ) = @_;
 
     return Test::Mimic::Recorder::_Implementation::_decode( $records, $coded_val );
@@ -132,7 +141,7 @@ sub _record_package {
         for my $slot ( 'ARRAY', 'HASH' ) {
             my $reference = *{$typeglob}{$slot};
             if ( defined $reference ) {
-                $fake_typeglob->{$slot} = Test::Mimic::Recorder::encode( $records, $reference, 1, 0 );
+                $fake_typeglob->{$slot} = Test::Mimic::Library::encode( $records, $reference, 0 );
             }
         }
     }
@@ -154,7 +163,7 @@ sub _record_package {
     # Tie all scalars.
     for my $scalar ( keys %all_scalars ) {
         $fake_package->{$scalar}->{'SCALAR'} =
-            Test::Mimic::Recorder::encode( $records, *{$symbol_table->{$scalar}}{'SCALAR'}, 1, 0 );
+            Test::Mimic::Library::encode( $records, *{$symbol_table->{$scalar}}{'SCALAR'}, 0 );
     }
     
     #Handle inheritance issues regarding both isa and can.
@@ -175,10 +184,10 @@ sub _record_package {
             }
             
             # TODO: Query user settings regarding the volatility of the arguments.
-            my $encoded_args = Test::Mimic::Recorder::_Implementation::_encode_aliases( $records, \@_ );
+            my $arg_signature = Test::Mimic::Library::monitor_aliases( $records, \@_ );
             
             # Set up the recording storage for this call.
-            my $arg_key = Test::Mimic::Recorder::stringify($encoded_args);
+            my $arg_key = Test::Mimic::Library::gen_arg_key(\@_);
             my $context_to_result = ( $record_to->{$arg_key} ||= [] );
             
             # Make actual call, trap exceptions or store return.
@@ -197,13 +206,13 @@ sub _record_package {
                         $context_index = LIST_CONTEXT;
                         @results = &{$original_sub};
                         $stored_result =
-                            [ RETURN, Test::Mimic::Recorder::encode( $records, \@results, 1, 1) ];
+                            [ RETURN, Test::Mimic::Library::encode( $records, \@results, 1) ];
                     }
                     elsif (defined $context) {
                         $context_index = SCALAR_CONTEXT;
                         $results[0] = &{$original_sub};
                         $stored_result =
-                            [ RETURN, Test::Mimic::Recorder::encode( $records, $results[0], 1, 0 ) ];
+                            [ RETURN, Test::Mimic::Library::encode( $records, $results[0], 0 ) ];
                     }
                     else {
                         $context_index = VOID_CONTEXT;
@@ -216,12 +225,12 @@ sub _record_package {
             $failed = $eval_error->Failed();
             if ( $failed ) {
                 $exception = ( $eval_error->AllReasons() )[-1];
-                $stored_result = [ EXCEPTION, Test::Mimic::Recorder::encode( $records, $exception, 1, 0 ) ];
+                $stored_result = [ EXCEPTION, Test::Mimic::Library::encode( $records, $exception, 0 ) ];
             }
             
             # Maintain records
             push( @operation_sequence, [ $package, CODE_E, $sub, $arg_key, $context_index ] );
-            push( @{ $context_to_result->[$context_index] ||= [] }, $stored_result );
+            push( @{ $context_to_result->[$context_index] ||= [] }, ( $arg_signature, $stored_result ) );
 
             # Propagate original behavior
             if ( $failed ) {
@@ -292,7 +301,7 @@ sub _get_hierarchy_info {
 
 # Write recording to disk
 END {
-    Test::Mimic::Recorder::finish()
+    finish()
         if ( ! $done_writing );
 }
 

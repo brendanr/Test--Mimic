@@ -18,7 +18,13 @@ use constant {
 };
 
 sub TIEHASH {
-    
+    my ( $class, $records, $history ) = @_;
+
+    my $self = [];
+    $self->[RECORDS] = $records;
+    $self->[HISTORY] = $history;
+
+    return bless( $self, $class );
 }
 
 sub STORE {
@@ -28,21 +34,25 @@ sub STORE {
 sub FETCH {
     my ( $self, $key ) = @_;
 
+    return Test::Mimic::Library::play( $self->[RECORDS], shift( @{ $self->[HISTORY]->[FETCH_F]->{$key} } ) );
 }
 
 sub FIRSTKEY {
     my ($self) = @_;
 
+    return $self->NEXTKEY(); 
 }
 
 sub NEXTKEY {
     my ( $self, $last_key ) = @_;
 
+    return shift( @{ $self->[HISTORY]->[KEYS_F] } );
 }
 
 sub EXISTS {
     my ( $self, $key ) = @_;
 
+    return shift( @{ $self->[HISTORY]->[EXISTS_F]->{$key} } );
 }
 
 sub DELETE {
@@ -53,7 +63,8 @@ sub DELETE {
 
 sub SCALAR {
     my ( $self ) = @_;
-    
+
+    return shift( @{ $self->[HISTORY]->[SCALAR_F] } );
 }
 
 1;

@@ -222,12 +222,11 @@ for my $key ( 'Gangsters', 'Ojos Sexys', 'Spiderwebs' ) {
 }
 
 # Check a glob
-my $key = "\$ARRAY1 = [\n            202,\n            [\n              'ARRAY',\n      ".
-    "        [\n                [\n                  200,\n                  'Re".
-    "cordMe'\n                ],\n                [\n                  200,\n    ".
-    "              'Does this return grandma?'\n                ]\n            ".
-    "  ]\n            ]\n          ];\n";   # So very very very brittle... (The number of very's is the number
-                                            # of times this code has bitten me in the ass.)
+my $key = 'Will this key cause collisions?'; # So very very very very brittle... (The number of very's is the number
+                                             # of times this code has bitten me in the ass. NEW CONCERN: Our unary
+                                             # counting system is becoming problematic. Perhaps we can switch to
+                                             # binary, e.g. extremely very would be 2, extremely very extremely would
+                                             # be 5 and so on.)
 
 my $table = $typeglobs;
 for my $info ( [ 'RecordMe', 'Package' ], [ 'grandma', 'Symbol' ], [ 'CODE', 'Code' ], [ $key, 'Arg' ] ) {
@@ -236,5 +235,9 @@ for my $info ( [ 'RecordMe', 'Package' ], [ 'grandma', 'Symbol' ], [ 'CODE', 'Co
     $table = $table->{$key};
 }
 
-ok( $table->[0]->[0]->[0] == Test::Mimic::Recorder::_Implementation::RETURN(), 'Correct behavior type.' );
-is( $table->[0]->[0]->[1]->[1], 'grandma', 'Correct return' );
+use Data::Dump::Streamer;
+
+print STDERR Dump->Out($table);
+
+ok( $table->[0]->[1]->[0] == Test::Mimic::Recorder::RETURN(), 'Correct behavior type.' );
+is( $table->[0]->[1]->[1]->[1], 'grandma', 'Correct return' );
