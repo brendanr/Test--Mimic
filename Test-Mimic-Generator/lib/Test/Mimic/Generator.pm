@@ -4,10 +4,6 @@ use 5.006001;
 use strict;
 use warnings;
 
-use Data::Dump::Streamer qw<:undump>;
-use Test::Mimic::Recorder;
-use Cwd qw<abs_path>;
-
 our $VERSION = 0.001_001;
 
 sub get_object_package {
@@ -17,10 +13,13 @@ sub get_object_package {
 
 sub new {
     my ($class) = @_;
-    return bless( [], $class->GetObjectPackage() );
+    return bless( [], $class->get_object_package() );
 }
 
 package Test::Mimic::Generator::_Implementation;
+
+use Data::Dump::Streamer;
+use Cwd qw<abs_path>;
 
 BEGIN {
     my $offset = 0;
@@ -91,7 +90,7 @@ sub Test::Mimic::Generator::Object::write {
     for my $package (@packages) {
                 
         # Gets the name of the .pm file, descends to the location where it will be located.
-        my @dirs = split( /::/, $packages );
+        my @dirs = split( /::/, $package );
         my $filename = pop(@dirs) . '.pm';
         for my $dir (@dirs ) {
             _descend($dir);
@@ -99,7 +98,7 @@ sub Test::Mimic::Generator::Object::write {
         
         # Open, write and close the .pm file.
         open( my $fh, '>', $filename ) or die "Could not open file: $!";
-        _create($package,  $self->[TYPEGLOBS]->[$package], $self->[EXTRA]->[$package], $fh );
+        _create($package,  $self->[TYPEGLOBS]->{$package}, $self->[EXTRA]->{$package}, $fh );
         close($fh) or die "Could not close file: $!";
 
         # Move to the top of our fake library hierarchy.
@@ -126,45 +125,118 @@ sub _descend {
     chdir($dir) or die "Could not change the current working directory: $!";
 }
 
-sub _create {
-    my ( $package, $pseudo_symbol_table, $extra, $fh ) = @_;
-
-    my @ancestors = @{ $extra->{'ISA'} };
-    my $header = join( "\n",
-        "package $package;",
-        '',
-        'use strict;',
-        'use warnings;',
-        '',
-        'use Scalar::Util;',
-        'use Test::Mimic;', # Will this cause problems?
-        'use Test::Mimic::Recorder;',
-        '',
-        'sub isa {',
-        '    my ( $self, $type ) = @_;',
-        '',
-        "    my %ancestors = qw( @ancestors );",
-        '',    
-        '    if ( Scalar::Util::reftype($self) ) {',
-        '        my $name = Scalar::Util::blessed($self);',
-        '        if ($name) {',
-        '            return exists( $ancestors{$name} );',
-        '        }',
-        '        else {',
-        '            return ();',
-        '        }',
-        '    }',
-        '    else {',
-        '        return exists( $ancestors{$self} );',
-        '    }',
-        '}',
+{ 
+    # A few useful constant maps.
+    my %TYPE_TO_SIGIL = ( 'ARRAY' => '@', 'HASH' => '%', 'SCALAR' => '$' );
+    my %TYPE_TO_TIE = (
+        'ARRAY'     => 'Test::Mimic::Library::PlayArray',
+        'HASH'      => 'Test::Mimic::Library::PlayHash',
+        'SCALAR'    => 'Test::Mimic::Library::PlayScalar',
     );
 
-    my $
+    sub _create {
+        my ( $package, $pseudo_symbol_table, $extra, $fh ) = @_;
 
-    my $package_var_code = join( "\n",
-        'BEGIN {',
-        '    for 
+        my $header_code = join( "\n",
+            'package ' . $package  . ';',
+            '',
+            'use strict;',
+            'use warnings;',
+            '',
+            'use Scalar::Util;',
+            'use Data::Dump::Streamer qw<undump>;',
+            '',
+            'use Test::Mimic::Library;',
+            'use Test::Mimic::Library::PlayScalar;',
+            'use Test::Mimic::Library::PlayArray;',
+            'use Test::Mimic::Library::PlayHash;',
+            '',
+            '',
+        );
+        print $fh $header_code;
+
+        # Create code to tie package variables.
+        my $package_var_code = join( "\n",
+            'BEGIN {',
+            '    my $records = Test::Mimic::Library::get_records();',
+            '',
+        );
+        for my $typeglob ( keys %{$pseudo_symbol_table} ) {
+
+            my $full_name = $package . $typeglob;
+
+            # Tie the current typeglob
+            my %slots = %{ $pseudo_symbol_table->{$typeglob} };
+            delete $slots{'CODE'};
+            # NOTE: You may (some day) need to delete other types too.
+            for my $type ( keys %slots ) {
+                $package_var_code .= "\n" . '    tie( '
+                    . $TYPE_TO_SIGIL{$type} . $package . '::' . $typeglob # Full name including sigil
+                    . ', q<' . $TYPE_TO_TIE{$type} 
+                    . '>, $records, $records->[0]->['
+                    . $pseudo_symbol_table->[$typeglob]->[$type]->[1]   # Index for the reference, ...->[0]
+                                                                        # must be VOLATILE. Check?
+                    . '] );';
+            }
+        }
+        $package_var_code .= "\n" . '}';
+        print $fh $package_var_code;
+
+        my @ancestors = @{ $extra->{'ISA'} };
+        my $isa_code = join( "\n",
+            'sub isa {',
+            '    my ( $self, $type ) = @_;',
+            '',
+            '    my %ancestors = qw( ' . "@ancestors" . ' );', # Interpolation is needed here.
+            '',    
+            '    if ( Scalar::Util::reftype($self) ) {',
+            '        my $name = Scalar::Util::blessed($self);',
+            '        if ($name) {',
+            '            return exists( $ancestors{$name} );',
+            '        }',
+            '        else {',
+            '            return ();',
+            '        }',
+            '    }',
+            '    else {',
+            '        return exists( $ancestors{$self} );',
+            '    }',
+            '}',
+            '',
+            '',
+        );
+        # TODO: Make this dependent on user options.
+        print $fh $isa_code;
+
+        # Create code for user defined subroutines.
+        for my $typeglob ( keys %{$pseudo_symbol_table} ) {
+            my $sub_code = '{' . "\n";  # Of course, I could say "{\n". I am being overly verbose in an
+                                        # attempt to very explicitly separate out strings that interpolate.
+                                        # This is a problem because the perl code that I am writing often
+                                        # uses scalars that could be accidentally interpolated. If I come
+                                        # back to this line and add a scalar (or array) I don't want it to
+                                        # bite me.
+            # Create a list of lines of code for the behavior hash.
+            my @behavior_lines = Dump( $pseudo_symbol_table->{$typeglob}->{'CODE'} )->Out();
+            $behavior_lines[0] =~ s/^.*?=/my \$behavior = /; # Change name of dumped hash.
+            
+            for my $line (@behavior_lines) {
+                $sub_code .= '    ' . $line . "\n";
+            }
+
+            $sub_code .= join( "\n",
+                '',
+                '    sub ' . $typeglob . ' {',
+                '        return Test::Mimic::Library::execute( $behavior, @_ );',
+                '    }',
+                '}',
+                '',
+            );
+
+            print $fh $sub_code;
+        }
+    }
+}
 
 1;
 __END__

@@ -168,33 +168,32 @@ sub monitor_aliases {
                 my $index = $mutable->{$i}->[1]; # See monitor.
                 my ( $type, $history, $old_class ) = $references->[$index];
 
-                if ( _get_type( $aliases->[$i] ) eq $type ) { # They match!
-                    if ( exists( $type_to_action{$type} ) ) {
-                        my $cur_class = blessed( $aliases->[$i] );
-                        if ( defined($cur_class) && defined($old_class) ) {
-                            if ( $cur_class eq $old_class ) {
-                                &{ $type_to_action{$type} }( $records, $aliases->[$i], $history );
-                            }
-                            else {
-                                die "Objects blessed into different packages <$cur_class> and <$old_class>" .
-                                    ". Unable to play_arguments.";
-                            }
-                        }
-                        elsif ( ! defined($cur_class) && ! defined($old_class) ) {
-                           die "One object <$cur_class$old_class> and one unblessed reference. Unable to play.";
-                        }
-                        else {
-                            &{ $type_to_action{$type} }( $records, $aliases->[$i], $history );
-                        }
-                    }
-                    else {
-                        die "Types match, but type <$type> is not recognized. Unable to play_arguments."
-                    }
-                }
-                else {
+                if ( _get_type( $aliases->[$i] ) ne  $type ) { # They don't match!
                     die "Types do not match. Unable to play_arguments from <$coded_aliases> onto " .
                         "<$aliases>.";
                 }
+
+                if ( ! exists( $type_to_action{$type} ) ) {
+                    die "Types match, but type <$type> is not recognized. Unable to play_arguments.";
+                }
+                
+                my $cur_class = blessed( $aliases->[$i] );
+ 
+                if ( defined($cur_class) && defined($old_class) ) {
+                    if ( $cur_class eq $old_class ) {
+                        &{ $type_to_action{$type} }( $records, $aliases->[$i], $history );
+                    }
+                    else {
+                        die "Objects blessed into different packages <$cur_class> and <$old_class>" .
+                            ". Unable to play_arguments.";
+                    }
+                }
+                elsif ( ! defined($cur_class) && ! defined($old_class) ) {
+                   die "One object <$cur_class$old_class> and one unblessed reference. Unable to play.";
+                }
+                else {
+                    &{ $type_to_action{$type} }( $records, $aliases->[$i], $history );
+                } 
             }
             else {
                 die "Mutable/immutable mismatch. Unable to play_arguments from <$coded_aliases> onto " .
