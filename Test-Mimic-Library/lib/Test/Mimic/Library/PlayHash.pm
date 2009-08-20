@@ -7,8 +7,7 @@ use base qw<Tie::Hash>;
 
 use constant {
     # Instance variables
-    RECORDS => 0,
-    HISTORY => 1,
+    HISTORY => 0,
     
     # History fields
     FETCH_F     => 0,
@@ -18,10 +17,9 @@ use constant {
 };
 
 sub TIEHASH {
-    my ( $class, $records, $history ) = @_;
+    my ( $class, $history ) = @_;
 
     my $self = [];
-    $self->[RECORDS] = $records;
     $self->[HISTORY] = $history;
 
     return bless( $self, $class );
@@ -34,7 +32,7 @@ sub STORE {
 sub FETCH {
     my ( $self, $key ) = @_;
 
-    return Test::Mimic::Library::play( $self->[RECORDS], shift( @{ $self->[HISTORY]->[FETCH_F]->{$key} } ) );
+    return Test::Mimic::Library::play( shift( @{ $self->[HISTORY]->[FETCH_F]->{$key} } ) );
 }
 
 sub FIRSTKEY {

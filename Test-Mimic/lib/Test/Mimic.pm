@@ -4,6 +4,8 @@ use 5.006001;
 use strict;
 use warnings;
 
+use Test::Mimic::Library qw<load_records>;
+
 our $VERSION = '0.01';
 
 
@@ -13,25 +15,16 @@ my @references;
 my @operation_sequence;
 
 sub import {
-    local @INC = qw< .tmlib >;
+    #local @INC = qw< fake_lib >;
+    shift(@_); # We don't want to mimic ourself. ;)
+
+    load_records( 'fake_lib/history.rec' );
 
     for my $package_to_mimic (@_) {
-        eval( "require $package_to_mimc; 1" )
+        eval( "require fake_lib::$package_to_mimic; 1" )
             or die "Unable to require mimicked package <$package_to_mimic> from <@INC>: $@";
     }
-}
 
-sub check_recorded {
-    
-}
-
-
-sub get_references {
-
-}
-
-sub execute {
-    my ( $behavior, $order_scope,  
 }
 
 1;

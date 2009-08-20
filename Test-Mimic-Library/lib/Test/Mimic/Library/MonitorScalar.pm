@@ -6,17 +6,15 @@ use warnings;
 use constant {
     # Instance variables
     VALUE   => 0,
-    RECORDS => 1,
-    HISTORY => 2,
+    HISTORY => 1,
 };
 
 sub TIESCALAR {
-    my ( $class, $records, $history, $val ) = @_;
+    my ( $class, $history, $val ) = @_;
     
     # Initialize instance variables.
     my $self = [];
     $self->[VALUE] = ${$val};
-    $self->[RECORDS] = $records;
     $self->[HISTORY] = $history;
     
     bless( $self, $class );
@@ -27,7 +25,7 @@ sub FETCH {
     
     my $value = $self->[VALUE];
     if ( ! $Test::Mimic::Recorder::Recording ) {
-        push( @{ $self->[HISTORY] }, Test::Mimic::Library::monitor( $self->[RECORDS], $value ) );
+        push( @{ $self->[HISTORY] }, Test::Mimic::Library::monitor( $value ) );
     }
     
     return $value;

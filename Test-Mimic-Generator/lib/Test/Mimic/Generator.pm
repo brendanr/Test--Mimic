@@ -18,7 +18,7 @@ sub new {
 
 package Test::Mimic::Generator::_Implementation;
 
-use Data::Dump::Streamer;
+use Test::Mimic::Library qw< stringify stringify_by DATA >;
 use Cwd qw<abs_path>;
 
 BEGIN {
@@ -105,7 +105,10 @@ sub Test::Mimic::Generator::Object::write {
         chdir($start_path) or die "Could not change the current working directory: $!";
     }
 
-
+    # Write reference history
+    open( my $fh, '>', 'history.rec' ) or die "Could not open file: $!";
+    print $fh stringify( $self->[REFERENCES] );
+    close($fh) or die "Could not close file: $!";
 }
 
 # Changes the current working directory to $dir. If $dir does not exist then it will be created.
@@ -144,9 +147,8 @@ sub _descend {
             'use warnings;',
             '',
             'use Scalar::Util;',
-            'use Data::Dump::Streamer qw<undump>;',
             '',
-            'use Test::Mimic::Library;',
+            'use Test::Mimic::Library qw< execute get_references HISTORY >;',
             'use Test::Mimic::Library::PlayScalar;',
             'use Test::Mimic::Library::PlayArray;',
             'use Test::Mimic::Library::PlayHash;',
@@ -158,7 +160,7 @@ sub _descend {
         # Create code to tie package variables.
         my $package_var_code = join( "\n",
             'BEGIN {',
-            '    my $records = Test::Mimic::Library::get_records();',
+            '    my $references = get_references();',
             '',
         );
         for my $typeglob ( keys %{$pseudo_symbol_table} ) {
@@ -173,33 +175,35 @@ sub _descend {
                 $package_var_code .= "\n" . '    tie( '
                     . $TYPE_TO_SIGIL{$type} . $package . '::' . $typeglob # Full name including sigil
                     . ', q<' . $TYPE_TO_TIE{$type} 
-                    . '>, $records, $records->[0]->['
-                    . $pseudo_symbol_table->[$typeglob]->[$type]->[1]   # Index for the reference, ...->[0]
-                                                                        # must be VOLATILE. Check?
-                    . '] );';
+                    . '>, $references->['
+                    . $pseudo_symbol_table->{$typeglob}->{$type}->[DATA]    # Index for the reference, ...->[ENCODE_TYPE]
+                                                                            # must be VOLATILE. Check?
+                    . ']->[HISTORY] );';
             }
         }
-        $package_var_code .= "\n" . '}';
+        $package_var_code .= "\n" . '}' . "\n\n";
         print $fh $package_var_code;
 
-        my @ancestors = @{ $extra->{'ISA'} };
+        my @ancestors = %{ $extra->{'ISA'} };
         my $isa_code = join( "\n",
-            'sub isa {',
-            '    my ( $self, $type ) = @_;',
-            '',
+            '{',
             '    my %ancestors = qw( ' . "@ancestors" . ' );', # Interpolation is needed here.
+            '',
+            '    sub isa {',
+            '        my ( $self, $type ) = @_;',
             '',    
-            '    if ( Scalar::Util::reftype($self) ) {',
-            '        my $name = Scalar::Util::blessed($self);',
-            '        if ($name) {',
-            '            return exists( $ancestors{$name} );',
+            '        if ( Scalar::Util::reftype($self) ) {',
+            '            my $name = Scalar::Util::blessed($self);',
+            '            if ($name) {',
+            '                return exists( $ancestors{$name} );',
+            '            }',
+            '            else {',
+            '                return ();',
+            '            }',
             '        }',
             '        else {',
-            '            return ();',
+            '            return exists( $ancestors{$self} );',
             '        }',
-            '    }',
-            '    else {',
-            '        return exists( $ancestors{$self} );',
             '    }',
             '}',
             '',
@@ -210,30 +214,35 @@ sub _descend {
 
         # Create code for user defined subroutines.
         for my $typeglob ( keys %{$pseudo_symbol_table} ) {
-            my $sub_code = '{' . "\n";  # Of course, I could say "{\n". I am being overly verbose in an
-                                        # attempt to very explicitly separate out strings that interpolate.
-                                        # This is a problem because the perl code that I am writing often
-                                        # uses scalars that could be accidentally interpolated. If I come
-                                        # back to this line and add a scalar (or array) I don't want it to
-                                        # bite me.
-            # Create a list of lines of code for the behavior hash.
-            my @behavior_lines = Dump( $pseudo_symbol_table->{$typeglob}->{'CODE'} )->Out();
-            $behavior_lines[0] =~ s/^.*?=/my \$behavior = /; # Change name of dumped hash.
-            
-            for my $line (@behavior_lines) {
-                $sub_code .= '    ' . $line . "\n";
+            if ( exists( $pseudo_symbol_table->{$typeglob}->{'CODE'} ) ) {
+                my $sub_code = '{' . "\n";  # Of course, I could say "{\n". I am being overly verbose in an
+                                            # attempt to very explicitly separate out strings that
+                                            # interpolate. This is a problem because the perl code that I am
+                                            # writing often uses scalars that could be accidentally
+                                            # interpolated. If I come back to this line and add a scalar (or
+                                            # array) I don't want it to bite me.
+
+                # Create a list of lines of code for the behavior hash.
+                my $behavior_code = stringify( $pseudo_symbol_table->{$typeglob}->{'CODE'} );
+                my @behavior_lines = split( /\n/, $behavior_code );
+                $behavior_lines[0] =~ s/^.*?=/my \$behavior = /; # Change name of dumped hash.
+                
+                for my $line (@behavior_lines) {
+                    $sub_code .= '    ' . $line . "\n";
+                }
+
+                $sub_code .= join( "\n",
+                    '',
+                    '    sub ' . $typeglob . ' {',
+                    '        return execute( $behavior, @_ );',
+                    '    }',
+                    '}',
+                    '',
+                    '',
+                );
+
+                print $fh $sub_code;
             }
-
-            $sub_code .= join( "\n",
-                '',
-                '    sub ' . $typeglob . ' {',
-                '        return Test::Mimic::Library::execute( $behavior, @_ );',
-                '    }',
-                '}',
-                '',
-            );
-
-            print $fh $sub_code;
         }
     }
 }

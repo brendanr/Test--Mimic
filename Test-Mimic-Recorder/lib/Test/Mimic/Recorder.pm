@@ -13,6 +13,11 @@ use Devel::EvalError ();
 
 use Test::Mimic::Library qw(
     encode
+    stringify
+    get_references
+    gen_arg_key
+    monitor_aliases
+    init_records
     RETURN
     EXCEPTION
     CODE_E
@@ -28,10 +33,6 @@ my  $save_to;
 my  $done_writing = 0;
 
 # Data to be stored.
-my @references; # A table containing recorded data for volatile references and objects. The index of a
-                # given reference is simply the number of references
-                # Test::Mimic::Recorder::_Implementation::_watch saw before the reference under
-                # consideration.
 my %typeglobs;  # Contains recorded data for scalars, arrays, hashes and subroutines in a structure analogous
                 # to the symbol table. The key is the package name.
 my %extra;      # Currently contains only a flattened class hierarchy for each recorded class at
@@ -46,11 +47,13 @@ sub import {
     die "import should only be used as a method."
         if ( ! $_[0]->isa('Test::Mimic::Recorder') );
 
-    if ( @_ == 1 ) { # We are using Test::Mimic::Recorder as a library, not to actively monitor a program.
+    if ( @_ == 1 ) { # We are using Test::Mimic::Recorder as a library, not to actively monitor a program. #DEPRECATED
         $done_writing = 1;
     }
     else {
         shift(@_);
+
+        init_records();
 
         # Call _record_package on each package passing along the package and a list of scalars to record.
         my @scalars;
@@ -58,69 +61,27 @@ sub import {
             \@_, 'f=s' => \$save_to, 's=s' => \@scalars,
             '<>' => sub {
                 @scalars = split( /,/, join( ',', @scalars ) );
-                _record_package( $_[0], @scalars );
+                _record_package( $_[0], \@scalars );
+                @scalars = (); # So scalars from one pacakge don't get mixed in with those of another.
             },
         ) or die "Bad options: $!";
         $save_to ||= 'test_mimic.rec';
     }
 }
 
-# Returns a structure representing the passed value suitable for stringification.
-# See POD below for details.
-# 
-# Currently scalars et al., arrays, hashes, qr objects, code references are handled well.
-# Filehandles are not being tied, ideally they would be, but the filehandle tying mechanism is
-# not complete.
-# Formats are in a similar position, but they probably shouldn't ever be redefined. (Check this.)
-# Because of this that may not really be a problem.
-# The entries in globs can not be tied. A special glob tie could potentially remedy this, but
-# this does not currently exist.
-sub encode {
-    die "Test::Mimic::Recorder::encode has been superseded by Test::Mimic::Library::encode";
-    my ( $records, $val, $is_volatile, $at_level ) = @_;
-    # NOTE: $is_volatile is currently ignored, but we are likely to use it in the future.
-    
-    return Test::Mimic::Recorder::_Implementation::_encode( $records, $val, $at_level );
-}
-
-sub decode {
-    die "Test::Mimic::Recorder::decode has been superseded by Test::Mimic::Library::decode";
-    my ( $records, $coded_val ) = @_;
-
-    return Test::Mimic::Recorder::_Implementation::_decode( $records, $coded_val );
-}
-
-# Given an encoded element returns a string version. Should be suitable for use as a key in a hash as well as
-# being invertible with destringify. Subclass Test::Mimic::Recorder to stringify with your preferred library.
-#
-# TODO: Will need to use SortKeys from Data::Dump::Streamer if we start allowing unblessed hashes to be
-# encoded. This is necessary because they may be used in an argument list and these need to match exactly
-# from recording to playback. _encode currently will encode hashes, but the only places where we encode as
-# opposed to monitor are in argument lists and return lists (and only for one 'level'), so this is not at
-# present a problem.
-sub stringify {
-    my ($val) = @_;
-    return scalar Dump($val)->Out();
-}
-
 # Writes recording to disk. Typically called automatically.
 sub finish {
     $done_writing = 1; # Prevents the END block from overwriting what we just wrote.
     open( my $fh, '>', $save_to ) or die "Unable to open file: $!";
-    print $fh Test::Mimic::Recorder::stringify( [ \@references, \%typeglobs, \%extra, \@operation_sequence ] )
+    print $fh stringify( [ get_references(), \%typeglobs, \%extra, \@operation_sequence ] )
         or die "Unable to write: $!";
     close($fh) or die "Unable to close file: $!";
 }
 
-# Transient data. Will not be written to disk.
-my %address_to_index;
-my %alive;
-my $records = [ \@references, \%address_to_index, \%alive ];
-
 # Accepts a package name and a list of scalars in the package to be recorded. Test::Mimic::Recorder will
 # begin monitoring this package including the passed scalars.
 sub _record_package {
-    my ( $package, @user_selected_scalars ) = @_; 
+    my ( $package, $user_selected_scalars ) = @_; 
     
     eval("require $package; 1")
         or die "Failed to load package $package. $@";
@@ -141,7 +102,7 @@ sub _record_package {
         for my $slot ( 'ARRAY', 'HASH' ) {
             my $reference = *{$typeglob}{$slot};
             if ( defined $reference ) {
-                $fake_typeglob->{$slot} = Test::Mimic::Library::encode( $records, $reference, 0 );
+                $fake_typeglob->{$slot} = encode( $reference, 0 );
             }
         }
     }
@@ -156,14 +117,13 @@ sub _record_package {
             }
         }
     }
-    for my $scalar (@user_selected_scalars) {
+    for my $scalar (@{$user_selected_scalars}) {
         $all_scalars{$scalar} = ARBITRARY;
     }
     
     # Tie all scalars.
     for my $scalar ( keys %all_scalars ) {
-        $fake_package->{$scalar}->{'SCALAR'} =
-            Test::Mimic::Library::encode( $records, *{$symbol_table->{$scalar}}{'SCALAR'}, 0 );
+       $fake_package->{$scalar}->{'SCALAR'} = encode( *{$symbol_table->{$scalar}}{'SCALAR'}, 0 );
     }
     
     #Handle inheritance issues regarding both isa and can.
@@ -184,10 +144,10 @@ sub _record_package {
             }
             
             # TODO: Query user settings regarding the volatility of the arguments.
-            my $arg_signature = Test::Mimic::Library::monitor_aliases( $records, \@_ );
+            my $arg_signature = monitor_aliases( \@_ );
             
             # Set up the recording storage for this call.
-            my $arg_key = Test::Mimic::Library::gen_arg_key(\@_);
+            my $arg_key = gen_arg_key(\@_);
             my $context_to_result = ( $record_to->{$arg_key} ||= [] );
             
             # Make actual call, trap exceptions or store return.
@@ -205,14 +165,12 @@ sub _record_package {
                     if ($context) {
                         $context_index = LIST_CONTEXT;
                         @results = &{$original_sub};
-                        $stored_result =
-                            [ RETURN, Test::Mimic::Library::encode( $records, \@results, 1) ];
+                        $stored_result = [ RETURN, encode( \@results, 1) ];
                     }
                     elsif (defined $context) {
                         $context_index = SCALAR_CONTEXT;
                         $results[0] = &{$original_sub};
-                        $stored_result =
-                            [ RETURN, Test::Mimic::Library::encode( $records, $results[0], 0 ) ];
+                        $stored_result = [ RETURN, encode( $results[0], 0 ) ];
                     }
                     else {
                         $context_index = VOID_CONTEXT;
@@ -225,7 +183,7 @@ sub _record_package {
             $failed = $eval_error->Failed();
             if ( $failed ) {
                 $exception = ( $eval_error->AllReasons() )[-1];
-                $stored_result = [ EXCEPTION, Test::Mimic::Library::encode( $records, $exception, 0 ) ];
+                $stored_result = [ EXCEPTION, encode( $exception, 0 ) ];
             }
             
             # Maintain records

@@ -28,6 +28,7 @@ $dummy = $RecordMe::scalar_state = "A string";
 exists( $RecordMe::array_state[0] );    # Tests EXISTS
 exists( $RecordMe::array_state[17] );
 $dummy = @RecordMe::array_state;        # Tests FETCHSIZE
+
 for my $val (@RecordMe::array_state) {
     $dummy = $val;                      # Tests FETCH
 };
@@ -222,7 +223,7 @@ for my $key ( 'Gangsters', 'Ojos Sexys', 'Spiderwebs' ) {
 }
 
 # Check a glob
-my $key = 'Will this key cause collisions?'; # So very very very very brittle... (The number of very's is the number
+my $key = 'Will this key cause collisions?'; # So very very very very very brittle... (The number of very's is the number
                                              # of times this code has bitten me in the ass. NEW CONCERN: Our unary
                                              # counting system is becoming problematic. Perhaps we can switch to
                                              # binary, e.g. extremely very would be 2, extremely very extremely would
@@ -234,10 +235,6 @@ for my $info ( [ 'RecordMe', 'Package' ], [ 'grandma', 'Symbol' ], [ 'CODE', 'Co
     ok( exists( $table->{$key} ), "$type exists" );
     $table = $table->{$key};
 }
-
-use Data::Dump::Streamer;
-
-print STDERR Dump->Out($table);
 
 ok( $table->[0]->[1]->[0] == Test::Mimic::Recorder::RETURN(), 'Correct behavior type.' );
 is( $table->[0]->[1]->[1]->[1], 'grandma', 'Correct return' );

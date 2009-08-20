@@ -7,8 +7,7 @@ use base qw<Tie::Array>;
 
 use constant {
     # Instance variable indices
-    RECORDS => 0,
-    HISTORY => 1,
+    HISTORY => 0,
     
     # History fields
     FETCH_F     => 0,
@@ -18,11 +17,11 @@ use constant {
 
 # basic methods
 sub TIEARRAY {
-    my ( $class, $records, $history ) = @_;
+    my ( $class, $history ) = @_;
 
     #Initialize instance variables.
     my $self = [];
-    $self->[RECORDS] = $records;
+
     $self->[HISTORY] = $history;
 
     return bless( $self, $class );
@@ -31,7 +30,7 @@ sub TIEARRAY {
 sub FETCH {
     my ( $self, $index ) = @_;
 
-    return Test::Mimic::Library::play( $self->[RECORDS], shift( @{ $self->[HISTORY]->[FETCH_F]->[$index] } ) );
+    return Test::Mimic::Library::play( shift( @{ $self->[HISTORY]->[FETCH_F]->[$index] } ) );
 }
 
 sub STORE {
@@ -41,7 +40,7 @@ sub STORE {
 sub FETCHSIZE {
     my ($self) = @_;
 
-    return shift( @{ $self->[HISTORY]->[FETCH_F] } );    
+    return shift( @{ $self->[HISTORY]->[FETCHSIZE_F] } );    
 }
 
 sub STORESIZE {

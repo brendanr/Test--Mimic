@@ -8,8 +8,7 @@ use base qw<Tie::Array>;
 use constant {
     # Instance variables
     VALUE   => 0,
-    RECORDS => 1,
-    HISTORY => 2,
+    HISTORY => 1,
     
     # History fields
     FETCH_F     => 0,
@@ -19,12 +18,11 @@ use constant {
 
 # basic methods
 sub TIEARRAY {
-    my ( $class, $records, $history, $val ) = @_;
+    my ( $class, $history, $val ) = @_;
     
     # Initialize instance variables.
     my $self = [];
     @{ $self->[VALUE] = [] } = @{$val}; # Copy the array
-    $self->[RECORDS] = $records;
     for my $field ( FETCH_F, FETCHSIZE_F, EXISTS_F ) {
         $history->[$field] = [];
     }
@@ -39,7 +37,7 @@ sub FETCH {
     my $value = $self->[VALUE]->[$index];
     if ( ! $Test::Mimic::Recorder::SuspendRecording ) {
         my $index_history = ( $self->[HISTORY]->[FETCH_F]->[$index] ||= [] );
-        push( @{$index_history}, Test::Mimic::Library::monitor( $self->[RECORDS], $value ) );
+        push( @{$index_history}, Test::Mimic::Library::monitor( $value ) );
     }
     
     return $value;

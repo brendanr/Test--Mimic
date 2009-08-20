@@ -8,8 +8,7 @@ use base qw<Tie::Hash>;
 use constant {
     # Instance variables
     VALUE   => 0,
-    RECORDS => 1,
-    HISTORY => 2,
+    HISTORY => 1,
     
     # History fields
     FETCH_F     => 0,
@@ -19,12 +18,11 @@ use constant {
 };
 
 sub TIEHASH {
-    my ( $class, $records, $history, $val ) = @_;
+    my ( $class, $history, $val ) = @_;
     
     # Initialize instance variables.
     my $self = [];
     %{ $self->[VALUE] = {} } = %{$val}; # Copy the hash
-    $self->[RECORDS] = $records;
     for my $field ( FETCH_F, EXISTS_F ) {
         $history->[$field] = {};
     }
@@ -48,7 +46,7 @@ sub FETCH {
     my $value = $self->[VALUE]->{$key};
     if ( ! $Test::Mimic::Recorder::SuspendRecording ) {
         my $key_history = ( $self->[HISTORY]->[FETCH_F]->{$key} ||= [] ); 
-        push( @{$key_history}, Test::Mimic::Library::monitor( $self->[RECORDS], $value ) );
+        push( @{$key_history}, Test::Mimic::Library::monitor( $value ) );
     }
     
     return $value;
