@@ -59,6 +59,8 @@ our @EXPORT_OK = (
         gen_arg_key_by
         stringify
         stringify_by
+        destringify
+        destringify_by
         init_records
         load_records
         get_references
@@ -219,6 +221,10 @@ sub _is_pattern {
 {
     my $translator = sub { return 'Will this key cause collisions?'; }; # ;)
 
+    # Basic idea: Lightweight nesting. max depth 2, refs and objs identified by
+    # type/name and index, unwatched/beyond max depth refs and objs simply by
+    # type/name. Stringified.
+
     sub gen_arg_key_by {
         $translator = $_[0];
     }
@@ -245,6 +251,18 @@ sub _is_pattern {
     # present a problem.
     sub stringify {
         return &{$stringifier};
+    }
+}
+
+{
+    my $destringifier = sub { die "destringify not yet implemented." };
+
+    sub destringify_by {
+        $destringifier = $_[0];
+    }
+
+    sub destringify {
+        return &{$destringifier};
     }
 }
 
@@ -296,10 +314,30 @@ sub play_aliases {
             next;                                   # We shouldn't try to tie a read-only variable. :)
         }
         elsif ( ! $cur_read_only && ! $orig_read_only ) { # If they are both mutable...
-            my $index = $mutable->{$i}->[1]; # See monitor.
+            my $index = $mutable->{$i}->[DATA]; # See monitor.
+
+            if ( defined( $index_to_reference->{$index} ) ) { # If we have already seen this value.
+                next;
+            }
+
+            #TODO: Assuming we maintain address_to_index and is_alive during playback too we can
+            #      check to see if $address_to_index{ refaddr( $index_to_reference{$index} ) } == $index.
+            #      If it doesn't we know that there is a problem. <---- that like something Or.
+
             my ( $type, $history, $old_class ) = @{ $references->[$index] };
-           
             tie( $aliases->[$i], 'Test::Mimic::Library::PlayScalar', $history );
+            $index_to_reference->{$index} = \( $aliases->[$i] );
+            weaken( $index_to_reference->{$index} ); # Don't prevent the val from being gced.
+
+            #NOTE: We need not bless the alias here. Either we produced it earlier, blessed it then and hit
+            #      next above or the alias was produced externally and if blessed at all was blessed
+            #      elsewhere.
+
+            my $address = refaddr( \( $aliases->[$i] ) ); 
+            $address_to_index->{$address} = $index;
+            $is_alive->{$address} = \( $aliases->[$i] );
+            weaken( $is_alive->{$address} );
+
         }
         else {
             die "Mutable/immutable mismatch. Unable to play_aliases from <$coded_aliases> onto "
@@ -577,7 +615,10 @@ sub _get_type {
             return $data;
         }
         elsif ( $type == VOLATILE ) {
-            if ( exists( $index_to_reference->{$data} ) ) {
+            if ( defined( $index_to_reference->{$data} ) ) {    # We are using defined because the weak
+                                                                # references used in the hash will be set to
+                                                                # undef upon the destruction of the
+                                                                # corresponding values.
                 return $index_to_reference->{$data};
             }
             else {
@@ -597,8 +638,16 @@ sub _get_type {
                     bless( $reference, $class_name );
                 }
 
-                # Note the creation of this reference, so we don't recreate it.
+                # Note the creation of this reference, so we don't recreate it and are aware of what recorded
+                # reference it corresponds to.
+                my $address = refaddr($reference); 
+                $address_to_index->{$address} = $data;
+                $is_alive->{$address} = $reference;
+                weaken( $is_alive->{$address} );
                 $index_to_reference->{$data} = $reference;
+                weaken( $index_to_reference->{$data} ); # But don't prevent it from being gced. If we
+                                                        # need to we can recreate it easily. ( Although the
+                                                        # address may well be different. )
 
                 return $reference;            
             }
@@ -608,7 +657,6 @@ sub _get_type {
         }
     }
 }
-
 
 1;
 __END__

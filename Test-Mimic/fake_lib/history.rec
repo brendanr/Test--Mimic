@@ -29,11 +29,6 @@ $ARRAY1 = [
                             ] ]
                 },
                 [
-                  undef,
-                  'cube',
-                  'circle',
-                  'square',
-                  undef,
                   'cube',
                   'circle',
                   'square',

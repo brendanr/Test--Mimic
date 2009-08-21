@@ -32,18 +32,22 @@ sub STORE {
 sub FETCH {
     my ( $self, $key ) = @_;
 
+    require Data::Dump::Streamer;my($a,$b,$c)=caller;print STDERR "FETCH: $a $b $c\n";#DEBUG
+
     return Test::Mimic::Library::play( shift( @{ $self->[HISTORY]->[FETCH_F]->{$key} } ) );
 }
 
 sub FIRSTKEY {
     my ($self) = @_;
 
+    require Data::Dump::Streamer;my($a,$b,$c)=caller;print STDERR "FIRST: $a $b $c\n";#DEBUG
     return $self->NEXTKEY(); 
 }
 
 sub NEXTKEY {
     my ( $self, $last_key ) = @_;
 
+    require Data::Dump::Streamer;my($a,$b,$c)=caller;print STDERR "KEY: $a $b $c\n";#DEBUG
     return shift( @{ $self->[HISTORY]->[KEYS_F] } );
 }
 
@@ -57,7 +61,9 @@ sub DELETE {
     # not a read, do nothing
 }
 
-# CLEAR will be inherited from Tie::Hash
+sub CLEAR {
+    # not a read, do nothing
+}
 
 sub SCALAR {
     my ( $self ) = @_;

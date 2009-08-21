@@ -58,7 +58,21 @@ sub EXISTS {
     return shift( @{ $self->[HISTORY]->[EXISTS_F]->[$index] } );
 }
 
-#POP, PUSH, SHIFT, UNSHIFT, CLEAR and SPLICE will be inherited from Tie::Array
+#POP, SHIFT, and SPLICE will be inherited from Tie::Array
+
+#NOTE: We always consider SPLICE to be a read.
+
+sub CLEAR {
+    # not a read, do nothing
+}
+
+sub PUSH {
+    # not a read, do nothing
+}
+
+sub UNSHIFT {
+    # not a read, do nothing
+}
 
 # optional methods
 sub UNTIE {
@@ -68,6 +82,5 @@ sub UNTIE {
 sub DESTROY {
     
 }
-
 
 1;

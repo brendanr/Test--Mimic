@@ -85,7 +85,27 @@ sub EXISTS {
     return $result;
 }
 
-#POP, PUSH, SHIFT, UNSHIFT, CLEAR and SPLICE will be inherited from Tie::Array
+# We need to turn off recording for any non-read inherited operations.
+sub PUSH {
+    my $self = shift(@_);
+    local $Test::Mimic::Recorder::SuspendRecording = 1;
+    $self->SUPER::PUSH(@_);
+}
+
+sub UNSHIFT {
+    my $self = shift(@_);
+    local $Test::Mimic::Recorder::SuspendRecording = 1;
+    $self->SUPER::UNSHIFT(@_);
+}
+
+# Not truly needed for CLEAR, but if the implementation of Tie::Hash changes this will save us.
+sub CLEAR {
+    my $self = shift(@_);
+    local $Test::Mimic::Recorder::SuspendRecording = 1;
+    $self->SUPER::CLEAR();
+}
+
+#POP, SHIFT, and SPLICE will be inherited from Tie::Array
 
 # optional methods
 sub UNTIE {

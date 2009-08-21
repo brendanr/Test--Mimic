@@ -4,8 +4,10 @@ use warnings;
 use Test::More 'no_plan';
 
 # use the recorded package via the controller.
-use Test::Mimic qw<RecordMe>;
- 
+BEGIN {
+    use Test::Mimic qw<RecordMe>;
+}
+
 my $dummy;
 my @dummy;
 my %dummy;
@@ -14,12 +16,12 @@ my @calls;
 
 # Access and manipulate package variables.
 
-$dummy = $RecordMe::scalar_state = 47; # Tests FETCH
+$dummy = $RecordMe::scalar_state;# = 47; # Tests FETCH
 is( $dummy, 47 );
-$dummy = $RecordMe::scalar_state = "A string";
+$dummy = $RecordMe::scalar_state;# = "A string";
 is( $dummy, 'A string' );
 
-@RecordMe::array_state = (1, 2, 3);
+#@RecordMe::array_state = (1, 2, 3);
 ok( exists( $RecordMe::array_state[0] ) );    # Tests EXISTS
 ok( ! exists( $RecordMe::array_state[17] ) );
 $dummy = @RecordMe::array_state;        # Tests FETCHSIZE
@@ -31,7 +33,7 @@ for my $val (@RecordMe::array_state) {
     is( $dummy, shift(@check_against) );
 };
 
-@RecordMe::array_state = ('a', 'b', 'c');
+#@RecordMe::array_state = ('a', 'b', 'c');
 @dummy = @RecordMe::array_state; # Tests FETCH and FETCHSIZE (?)
 
 @check_against = ('a', 'b', 'c');
@@ -40,11 +42,11 @@ for my $val ( @dummy ) {
 }
 
 
-%RecordMe::hash_state = (
-    'circle'    => 'sphere',
-    'square'    => 'cube',
-    'cube'      => 'hypercube',
-);
+#%RecordMe::hash_state = (
+#    'circle'    => 'sphere',
+#    'square'    => 'cube',
+#    'cube'      => 'hypercube',
+#);
 
 my %check_against = (
     'circle'    => 'sphere',
@@ -60,11 +62,11 @@ ok( exists( $RecordMe::hash_state{'circle'} ) );      # Tests EXISTS
 ok( ! exists( $RecordMe::hash_state{'line'} ) );
 is( scalar( %RecordMe::hash_state ), '3/8' );           # Tests SCALAR
 
-%RecordMe::hash_state = (
-    'sky'   => 'grey',
-    'water' => 'green',
-    'grass' => 'yellow',
-);       
+#%RecordMe::hash_state = (
+#    'sky'   => 'grey',
+#    'water' => 'green',
+#    'grass' => 'yellow',
+#);       
 %dummy = %RecordMe::hash_state; # Tests FIRSTKEY, NEXTKEY and FETCH (?)
 
 %check_against = (
@@ -75,8 +77,6 @@ is( scalar( %RecordMe::hash_state ), '3/8' );           # Tests SCALAR
 for my $key ( keys %dummy ) {
     is( $dummy{$key}, $check_against{$key} );
 }
-
-
 
 # Call a few subroutines.
 
@@ -145,10 +145,10 @@ my $ref = {};
 $obj3->put( 'nothing particularly exciting', 0 );
 $obj3->put( 'a hash!', $ref );
 
-$ref->{'Beer'} = 'Reel Big Fish'; #Song name => band name, just for fun :)
-$ref->{'Spiderwebs'} = 'No Doubt';
-$ref->{'Ojos Sexys'} = 'Laurel Aitken';
-$ref->{'Gangsters'} = 'The Specials';
+#$ref->{'Beer'} = 'Reel Big Fish'; #Song name => band name, just for fun :)
+#$ref->{'Spiderwebs'} = 'No Doubt';
+#$ref->{'Ojos Sexys'} = 'Laurel Aitken';
+#$ref->{'Gangsters'} = 'The Specials';
 
 %check_against = (
     'Beer'          => 'Reel Big Fish',
@@ -161,20 +161,20 @@ for my $key ( keys %{$ref} ) {
     is( $dummy, $check_against{$key} );
 }
 
-$ref->{'Beer'} = 'Mustard Plug';
+#$ref->{'Beer'} = 'Mustard Plug';
 $dummy = $ref->{'Beer'};
 is( $dummy, 'Mustard Plug' );
 
 # Watching a circular structure.
 
 my $cur = my $front = [];
-for my $i ( 1 .. 20 ) {
-    $dummy = $cur->[0] = 2 * $i;
-    $cur = $cur->[1] = [];
-}
+#for my $i ( 1 .. 20 ) {
+#    $dummy = $cur->[0] = 2 * $i;
+#    $cur = $cur->[1] = [];
+#}
 
-$cur->[0] = 'again!';
-$cur->[1] = $front;
+#$cur->[0] = 'again!';
+#$cur->[1] = $front;
 
 $obj3->put( 'a circular linked list', $front ); # We don't watch random lexical variables, so pass it.
 
