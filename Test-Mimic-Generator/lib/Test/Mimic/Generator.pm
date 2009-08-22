@@ -146,6 +146,10 @@ sub _descend {
             'use strict;',
             'use warnings;',
             '',
+            'BEGIN {',  #TODO: Check to see if Test::Mimic is loaded, allow requiring fake pack directly etc.
+            '    Test::Mimic::prepare_for_use();',
+            '}',
+            '',
             'use Scalar::Util;',
             '',
             'use Test::Mimic::Library qw< execute get_references HISTORY >;',

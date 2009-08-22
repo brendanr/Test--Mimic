@@ -12,6 +12,7 @@ use Test::Mimic::Library::PlayArray;
 use Test::Mimic::Library::PlayHash;
 
 use Data::Dump::Streamer qw<:undump>;
+use Scalar::Util qw<blessed refaddr reftype weaken readonly>;
 
 require Exporter;
 
@@ -75,10 +76,6 @@ our @EXPORT = qw(
 
 our $VERSION = '0.01';
 
-# Preloaded methods go here.
-
-use Scalar::Util qw<blessed refaddr reftype weaken readonly>;
-
 use constant {
     # Array indices for the three contexts
     SCALAR_CONTEXT  => 0,
@@ -129,6 +126,7 @@ sub init_records {
     $index_to_reference = {};
 }
 
+# Preloaded methods go here.
 
 sub load_records {
     my ($file_name) = @_;

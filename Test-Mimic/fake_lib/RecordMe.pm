@@ -3,6 +3,10 @@ package RecordMe;
 use strict;
 use warnings;
 
+BEGIN {
+   Test::Mimic::prepare_for_use();
+}
+
 use Scalar::Util;
 
 use Test::Mimic::Library qw< execute get_references HISTORY >;

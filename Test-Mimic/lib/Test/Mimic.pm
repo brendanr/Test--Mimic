@@ -4,27 +4,49 @@ use 5.006001;
 use strict;
 use warnings;
 
-use Test::Mimic::Library qw<load_records>;
+use Test::Mimic::Library qw< load_records >;
 
 our $VERSION = '0.01';
 
-
 # Preloaded methods go here.
 
-my @references;
-my @operation_sequence;
+{
+    my @pristine_INC;
+    
+    sub prepare_for_use {
+        if ( defined(@pristine_INC) ) {
+            @INC = @pristine_INC;
+            @pristine_INC = ();
+        }
+    }
+    
+    sub require_from {
+        my ( $package, $dir ) = @_;
+        
+        @pristine_INC = @INC;
+        @INC = ($dir);
+        
+        # Load the package
+        my $success = eval( "require $package; 1" );
+
+        # Undo the @INC change
+        prepare_for_use();
+
+        # Die if the require was not successful.
+        if ( ! $success ) {
+            die "Unable to require package <$package> from <$dir>: $@";
+        }
+    }
+}
 
 sub import {
-    #local @INC = qw< fake_lib >;
     shift(@_); # We don't want to mimic ourself. ;)
 
     load_records( 'fake_lib/history.rec' );
-
+    
     for my $package_to_mimic (@_) {
-        eval( "require fake_lib::$package_to_mimic; 1" )
-            or die "Unable to require mimicked package <$package_to_mimic> from <@INC>: $@";
+        require_from( $package_to_mimic, 'fake_lib' );
     }
-
 }
 
 1;
