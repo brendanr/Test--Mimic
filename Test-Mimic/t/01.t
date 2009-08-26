@@ -5,7 +5,11 @@ use Test::More 'no_plan';
 
 # use the recorded package via the controller.
 BEGIN {
-    use Test::Mimic qw<RecordMe>;
+    use Test::Mimic {
+        'packages' => {
+            'RecordMe' => {},
+        },
+    };
 }
 
 my $dummy;

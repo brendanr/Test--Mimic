@@ -4,7 +4,7 @@ use strict;
 use warnings;
 
 BEGIN {
-   Test::Mimic::prepare_for_use();
+    Test::Mimic::prepare_for_use();
 }
 
 use Scalar::Util;
@@ -24,7 +24,7 @@ BEGIN {
 }
 
 {
-    my %ancestors = qw( Grandpa 400 RecordMe 400 Grandma 400 Mom 400 Dad 400 );
+    my %ancestors = qw< Grandpa 400 RecordMe 400 Grandma 400 Mom 400 Dad 400 >;
 
     sub isa {
         my ( $self, $type ) = @_;
@@ -71,7 +71,7 @@ BEGIN {
              ] ] };
 
     sub throw {
-        return execute( $behavior, @_ );
+        return execute( q<RecordMe>, q<throw>, $behavior, \@_ );
     }
 }
 
@@ -79,7 +79,7 @@ BEGIN {
     my $behavior =  {};
 
     sub dad {
-        return execute( $behavior, @_ );
+        return execute( q<RecordMe>, q<dad>, $behavior, \@_ );
     }
 }
 
@@ -181,7 +181,7 @@ BEGIN {
              ] };
 
     sub put {
-        return execute( $behavior, @_ );
+        return execute( q<RecordMe>, q<put>, $behavior, \@_ );
     }
 }
 
@@ -261,7 +261,7 @@ BEGIN {
              ] };
 
     sub pos_or_neg {
-        return execute( $behavior, @_ );
+        return execute( q<RecordMe>, q<pos_or_neg>, $behavior, \@_ );
     }
 }
 
@@ -269,7 +269,7 @@ BEGIN {
     my $behavior =  {};
 
     sub import {
-        return execute( $behavior, @_ );
+        return execute( q<RecordMe>, q<import>, $behavior, \@_ );
     }
 }
 
@@ -289,7 +289,7 @@ BEGIN {
              ] ] };
 
     sub mom {
-        return execute( $behavior, @_ );
+        return execute( q<RecordMe>, q<mom>, $behavior, \@_ );
     }
 }
 
@@ -297,7 +297,7 @@ BEGIN {
     my $behavior =  {};
 
     sub grandpa {
-        return execute( $behavior, @_ );
+        return execute( q<RecordMe>, q<grandpa>, $behavior, \@_ );
     }
 }
 
@@ -334,7 +334,7 @@ BEGIN {
              ] ] };
 
     sub get {
-        return execute( $behavior, @_ );
+        return execute( q<RecordMe>, q<get>, $behavior, \@_ );
     }
 }
 
@@ -376,7 +376,7 @@ BEGIN {
              ] ] };
 
     sub new {
-        return execute( $behavior, @_ );
+        return execute( q<RecordMe>, q<new>, $behavior, \@_ );
     }
 }
 
@@ -396,7 +396,7 @@ BEGIN {
              ] ] };
 
     sub grandma {
-        return execute( $behavior, @_ );
+        return execute( q<RecordMe>, q<grandma>, $behavior, \@_ );
     }
 }
 

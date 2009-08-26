@@ -54,8 +54,10 @@ our @EXPORT_OK = (
         decode
         monitor
         play
-        monitor_aliases
-        play_aliases
+        monitor_args
+        monitor_args_by
+        play_args
+        play_args_by
         gen_arg_key
         gen_arg_key_by
         stringify
@@ -64,8 +66,11 @@ our @EXPORT_OK = (
         destringify_by
         init_records
         load_records
+        write_records
         get_references
         execute
+        descend
+        load_preferences
     >,
     @{ $EXPORT_TAGS{'constants'} },
 );
@@ -119,14 +124,14 @@ my $address_to_index;
 my $is_alive;
 my $index_to_reference;
 
+# Preloaded methods go here.
+
 sub init_records {
     $references = [];
     $address_to_index = {};
     $is_alive = {};
     $index_to_reference = {};
 }
-
-# Preloaded methods go here.
 
 sub load_records {
     my ($file_name) = @_;
@@ -154,11 +159,50 @@ sub get_references {
     return $references;
 }
 
+sub write_records {
+    my ($file_name) = @_;
+
+    open( my $fh, '>', $file_name ) or die "Could not open file: $!";
+    print $fh stringify($references);
+    close($fh) or die "Could not close file: $!";
+}
+
+sub load_preferences {
+    my ($preferences) = @_;
+
+    if ( defined( $preferences->{'string'} ) ) {
+        stringify_by( $preferences->{'string' } );
+    }
+    if ( defined( $preferences->{'destring'} ) ) {
+        destringify_by( $preferences->{'destring'} );
+    }
+    gen_arg_key_by($preferences);
+    monitor_args_by($preferences);
+    play_args_by($preferences);
+}
+
+# Changes the current working directory to $dir. If $dir does not exist then it will be created.
+# If it exists, but it is not a directory or any other error occurs descend will die.
+sub descend {
+    my ($dir) = @_;
+
+    # Move to the $dir directory, creating if needed.
+    if  ( -e $dir ) {
+        if ( ! ( -d $dir ) ) {
+            die "$dir exists, but it is not a directory.";
+        }
+    }
+    else {
+        mkdir( $dir ) or die "Could not create directory: $!";
+    }
+    chdir($dir) or die "Could not change the current working directory: $!";
+}
+
 sub execute {
-    my $behavior = shift(@_);
+    my ( $package, $subroutine, $behavior, $args ) = @_;
 
     # Find proper behavior for these arguments.
-    my $key = gen_arg_key(@_);
+    my $key = gen_arg_key( $package, $subroutine, $args );
     if ( ! exists( $behavior->{$key} ) ) {
         die 'No call recorded with corresponding arguments.';
     }
@@ -188,7 +232,7 @@ sub execute {
     my ( $arg_signature, $stored_result ) = splice( @{$results}, 0, 2 );
 
     # Tie arguments making them behave as they were recorded behaving.
-    play_aliases( \@_, $arg_signature );
+    play_args( $package, $subroutine, $args, $arg_signature );
     
     # Perform appropriately
     my ( $result_type, $result ) = @{$stored_result};
@@ -217,18 +261,29 @@ sub _is_pattern {
 }
 
 {
-    my $translator = sub { return 'Will this key cause collisions?'; }; # ;)
-
-    # Basic idea: Lightweight nesting. max depth 2, refs and objs identified by
-    # type/name and index, unwatched/beyond max depth refs and objs simply by
-    # type/name. Stringified.
+    my $key_gens = {};
 
     sub gen_arg_key_by {
-        $translator = $_[0];
+        $key_gens = $_[0];
     }
 
     sub gen_arg_key {
-        return &{$translator};
+        my ( $package, $subroutine, $args ) = @_;
+        
+        my $key_gen;
+        if (   defined( $key_gen = $key_gens->{'packages'}->{$package}->{'subs'}->{$subroutine}->{'key'} )
+            || defined( $key_gen = $key_gens->{'packages'}->{$package}->{'key'} )
+            || defined( $key_gen = $key_gens->{'key'} ) ) {
+
+            return &{$key_gen}($args);
+        }
+        else {
+            return 'Will this key cause collisions?';
+ 
+            # Basic idea: Lightweight nesting. max depth 2, refs and objs identified by
+            # type/name and index, unwatched/beyond max depth refs and objs simply by
+            # type/name. Stringified.
+        }
     }
 }
 
@@ -264,82 +319,115 @@ sub _is_pattern {
     }
 }
 
-
-# aliases act like references, but look like simple scalars. Because of this we have to be particularly
-# cautious where they could appear. Barring XS code and the sub{\@_} construction we only need to worry
-# about subroutine arguments, i.e. $_[i].
-#
-# Accepts a reference to an array of aliases,
-# e.g. @_ from another subroutine. It will monitor each alias that is not read-only and return a tuple
-# consisting of the total number of aliases from the array reference as well as a hash reference that takes
-# an index of a mutable element in the array to the result of monitor being called on a reference to said
-# element.
-sub monitor_aliases {
-    my ( $aliases ) = @_;
-
-    my $num_aliases = @{$aliases};
-    my %mutable;
-    for ( my $i = 0; $i < $num_aliases; $i++ ) {
-        if ( ! readonly( $aliases->[$i] ) ) {
-            $mutable{$i} = monitor( \$aliases->[$i] );
-        }
-    }
-    return [ $num_aliases, \%mutable ];
-}
-
-
-# Accepts an array of aliases and the tuple returned by monitor_aliases.
-# Attempts to match the aliases in the array reference with those in the tuple. If everything matches the
-# mutable passed aliases will be tied to behave as those monitored earlier, otherwise dies. The array and
-# the tuple representing the original array are said to match if the total number of elements are the same
-# and the mutable elements are the same, i.e. appear at the same indices.
-sub play_aliases {
-    my ( $aliases, $coded_aliases ) = @_;
-    my ( $orig_num_aliases, $mutable ) = @{$coded_aliases};
-
-    # Apply a primitive signature check, list length.
-    my $cur_num_aliases = @{$aliases};
-    if ( $orig_num_aliases != $cur_num_aliases ) {
-        die "Signatures do not match. Unable to play_aliases from <$coded_aliases> onto <$aliases>.";
+{
+    my $monitors = {};
+    
+    sub monitor_args_by {
+        $monitors = $_[0];
     }
 
-    # Consider each alias, tie the mutable aliases if everything matches, else die.
-    for ( my $i = 0; $i < $cur_num_aliases; $i++ ) { 
-        my $cur_read_only = readonly( $aliases->[$i] );
-        my $orig_read_only = ! exists( $mutable->{$i} );
+    # aliases act like references, but look like simple scalars. Because of this we have to be particularly
+    # cautious where they could appear. Barring XS code and the sub{\@_} construction we only need to worry
+    # about subroutine arguments, i.e. $_[i].
+    #
+    # Accepts a reference to an array of aliases,
+    # e.g. @_ from another subroutine. It will monitor each alias that is not read-only and return a tuple
+    # consisting of the total number of aliases from the array reference as well as a hash reference that takes
+    # an index of a mutable element in the array to the result of monitor being called on a reference to said
+    # element.
+    sub monitor_args {
+        my ( $package, $subroutine, $aliases ) = @_;
 
-        if ( $cur_read_only && $orig_read_only ) {  # If they are both read-only they match.
-            next;                                   # We shouldn't try to tie a read-only variable. :)
-        }
-        elsif ( ! $cur_read_only && ! $orig_read_only ) { # If they are both mutable...
-            my $index = $mutable->{$i}->[DATA]; # See monitor.
+        my $arg_monitor;
+        if (   defined( $arg_monitor = $monitors->{'packages'}->{$package}->{'subs'}->{$subroutine}->{'monitor_args'} )
+            || defined( $arg_monitor = $monitors->{'packages'}->{$package}->{'monitor_args'} )
+            || defined( $arg_monitor = $monitors->{'monitor_args'} ) ) {
 
-            if ( defined( $index_to_reference->{$index} ) ) { # If we have already seen this value.
-                next;
-            }
-
-            #TODO: Assuming we maintain address_to_index and is_alive during playback too we can
-            #      check to see if $address_to_index{ refaddr( $index_to_reference{$index} ) } == $index.
-            #      If it doesn't we know that there is a problem. <---- that like something Or.
-
-            my ( $type, $history, $old_class ) = @{ $references->[$index] };
-            tie( $aliases->[$i], 'Test::Mimic::Library::PlayScalar', $history );
-            $index_to_reference->{$index} = \( $aliases->[$i] );
-            weaken( $index_to_reference->{$index} ); # Don't prevent the val from being gced.
-
-            #NOTE: We need not bless the alias here. Either we produced it earlier, blessed it then and hit
-            #      next above or the alias was produced externally and if blessed at all was blessed
-            #      elsewhere.
-
-            my $address = refaddr( \( $aliases->[$i] ) ); 
-            $address_to_index->{$address} = $index;
-            $is_alive->{$address} = \( $aliases->[$i] );
-            weaken( $is_alive->{$address} );
-
+            return &{$arg_monitor}($aliases);
         }
         else {
-            die "Mutable/immutable mismatch. Unable to play_aliases from <$coded_aliases> onto "
-                . "<$aliases>.";
+            my $num_aliases = @{$aliases};
+            my %mutable;
+            for ( my $i = 0; $i < $num_aliases; $i++ ) {
+                if ( ! readonly( $aliases->[$i] ) ) {
+                    $mutable{$i} = monitor( \$aliases->[$i] );
+                }
+            }
+            return [ $num_aliases, \%mutable ];
+        }
+    }
+}
+
+{
+    my $players = {};
+
+    sub play_args_by {
+        $players = $_[0];
+    }
+
+    # Accepts an array of aliases and the tuple returned by monitor_args.
+    # Attempts to match the aliases in the array reference with those in the tuple. If everything matches the
+    # mutable passed aliases will be tied to behave as those monitored earlier, otherwise dies. The array and
+    # the tuple representing the original array are said to match if the total number of elements are the same
+    # and the mutable elements are the same, i.e. appear at the same indices.
+    sub play_args {
+        my ( $package, $subroutine, $aliases, $coded_aliases ) = @_;
+
+        my $arg_player;
+        if (   defined( $arg_player = $players->{'packages'}->{$package}->{'subs'}->{$subroutine}->{'play_args'} )
+            || defined( $arg_player = $players->{'packages'}->{$package}->{'play_args'} )
+            || defined( $arg_player = $players->{'play_args'} ) ) {
+
+            &{$arg_player}( $aliases, $coded_aliases );
+        }
+        else {
+            my ( $orig_num_aliases, $mutable ) = @{$coded_aliases};
+
+            # Apply a primitive signature check, list length.
+            my $cur_num_aliases = @{$aliases};
+            if ( $orig_num_aliases != $cur_num_aliases ) {
+                die "Signatures do not match. Unable to play_args from <$coded_aliases> onto <$aliases>.";
+            }
+
+            # Consider each alias, tie the mutable aliases if everything matches, else die.
+            for ( my $i = 0; $i < $cur_num_aliases; $i++ ) { 
+                my $cur_read_only = readonly( $aliases->[$i] );
+                my $orig_read_only = ! exists( $mutable->{$i} );
+
+                if ( $cur_read_only && $orig_read_only ) {  # If they are both read-only they match.
+                    next;                                   # We shouldn't try to tie a read-only variable. :)
+                }
+                elsif ( ! $cur_read_only && ! $orig_read_only ) { # If they are both mutable...
+                    my $index = $mutable->{$i}->[DATA]; # See monitor.
+
+                    if ( defined( $index_to_reference->{$index} ) ) { # If we have already seen this value.
+                        next;
+                    }
+
+                    #TODO: Assuming we maintain address_to_index and is_alive during playback too we can
+                    #      check to see if $address_to_index{ refaddr( $index_to_reference{$index} ) } == $index.
+                    #      If it doesn't we know that there is a problem. <---- that like something Or.
+
+                    my ( $type, $history, $old_class ) = @{ $references->[$index] };
+                    tie( $aliases->[$i], 'Test::Mimic::Library::PlayScalar', $history );
+                    $index_to_reference->{$index} = \( $aliases->[$i] );
+                    weaken( $index_to_reference->{$index} ); # Don't prevent the val from being gced.
+
+                    #NOTE: We need not bless the alias here. Either we produced it earlier, blessed it then and hit
+                    #      next above or the alias was produced externally and if blessed at all was blessed
+                    #      elsewhere.
+
+                    my $address = refaddr( \( $aliases->[$i] ) ); 
+                    $address_to_index->{$address} = $index;
+                    $is_alive->{$address} = \( $aliases->[$i] );
+                    weaken( $is_alive->{$address} );
+
+                }
+                else {
+                    die "Mutable/immutable mismatch. Unable to play_args from <$coded_aliases> onto "
+                        . "<$aliases>.";
+                }
+            }
         }
     }
 }

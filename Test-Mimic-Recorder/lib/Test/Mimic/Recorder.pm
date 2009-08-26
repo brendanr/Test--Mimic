@@ -10,14 +10,17 @@ use warnings;
 use Getopt::Long qw<GetOptionsFromArray>;
 use Data::Dump::Streamer;
 use Devel::EvalError ();
+use Cwd qw<abs_path>;
 
 use Test::Mimic::Library qw(
     encode
+    descend
     stringify
-    get_references
     gen_arg_key
-    monitor_aliases
+    monitor_args
     init_records
+    load_preferences
+    write_records
     RETURN
     EXCEPTION
     CODE_E
@@ -29,7 +32,6 @@ use Test::Mimic::Library qw(
 
 our $VERSION = 0.001_001;
 our $SuspendRecording = 0; # Turn off recording.
-my  $save_to;
 my  $done_writing = 0;
 
 # Data to be stored.
@@ -43,39 +45,67 @@ my @operation_sequence; # An ordered list of recorded operations. The first oper
                         # subroutine calls in recorded packages. Orderings of various 'scopes' can later be
                         # extracted from this.
 
+#sub import {
+#    die "import should only be used as a method."
+#        if ( ! $_[0]->isa('Test::Mimic::Recorder') );
+#
+#    if ( @_ == 1 ) { # We are using Test::Mimic::Recorder as a library, not to actively monitor a program. #DEPRECATED
+#        $done_writing = 1;
+#    }
+#    else {
+#        shift(@_);
+#
+#        init_records();
+#
+#        # Call _record_package on each package passing along the package and a list of scalars to record.
+#        my @scalars;
+#        GetOptionsFromArray(
+#            \@_, 'f=s' => \$save_to, 's=s' => \@scalars,
+#            '<>' => sub {
+#                @scalars = split( /,/, join( ',', @scalars ) );
+#                _record_package( $_[0], \@scalars );
+#                @scalars = (); # So scalars from one pacakge don't get mixed in with those of another.
+#            },
+#        ) or die "Bad options: $!";
+#        $save_to ||= 'test_mimic.rec';
+#    }
+#}
+
+my $save_to;
+
 sub import {
-    die "import should only be used as a method."
-        if ( ! $_[0]->isa('Test::Mimic::Recorder') );
+    my ( $class, $preferences ) = @_;
 
-    if ( @_ == 1 ) { # We are using Test::Mimic::Recorder as a library, not to actively monitor a program. #DEPRECATED
-        $done_writing = 1;
-    }
-    else {
-        shift(@_);
+    $save_to =  $preferences->{'save'} || '.test_mimic_recorder_data';
 
+    # If we are not being run from Test::Mimic...
+    if ( ! defined( $preferences->{'test_mimic'} ) ) { # Perhaps use caller instead?
         init_records();
+        load_preferences($preferences);
+    }
 
-        # Call _record_package on each package passing along the package and a list of scalars to record.
-        my @scalars;
-        GetOptionsFromArray(
-            \@_, 'f=s' => \$save_to, 's=s' => \@scalars,
-            '<>' => sub {
-                @scalars = split( /,/, join( ',', @scalars ) );
-                _record_package( $_[0], \@scalars );
-                @scalars = (); # So scalars from one pacakge don't get mixed in with those of another.
-            },
-        ) or die "Bad options: $!";
-        $save_to ||= 'test_mimic.rec';
+    # Call _record_package on each package passing along the package and a list of scalars to record.
+    for my $package ( keys %{ $preferences->{'packages'} } ) {
+        _record_package( $package, $preferences->{'packages'}->{$package}->{'scalars'} ||= [] );
     }
 }
 
 # Writes recording to disk. Typically called automatically.
 sub finish {
     $done_writing = 1; # Prevents the END block from overwriting what we just wrote.
-    open( my $fh, '>', $save_to ) or die "Unable to open file: $!";
-    print $fh stringify( [ get_references(), \%typeglobs, \%extra, \@operation_sequence ] )
+
+    # Move the current directory to the specified directory, creating if needed.
+    my $top_level = abs_path();
+    descend($save_to);
+
+    open( my $fh, '>', 'additional_info.rec' ) or die "Unable to open file: $!";
+    print $fh stringify( [ \%typeglobs, \%extra, \@operation_sequence ] )
         or die "Unable to write: $!";
     close($fh) or die "Unable to close file: $!";
+    write_records( 'history_from_recorder.rec' );
+
+    # Undo the change to the current working directory above.
+    chdir($top_level) or die "Unable to change the current working directory: $!";
 }
 
 # Accepts a package name and a list of scalars in the package to be recorded. Test::Mimic::Recorder will
@@ -117,7 +147,7 @@ sub _record_package {
             }
         }
     }
-    for my $scalar (@{$user_selected_scalars}) {
+    for my $scalar ( @{$user_selected_scalars} ) {
         $all_scalars{$scalar} = ARBITRARY;
     }
     
@@ -144,10 +174,10 @@ sub _record_package {
             }
             
             # TODO: Query user settings regarding the volatility of the arguments.
-            my $arg_signature = monitor_aliases( \@_ );
+            my $arg_signature = monitor_args( $package, $sub, \@_ );
             
             # Set up the recording storage for this call.
-            my $arg_key = gen_arg_key(\@_);
+            my $arg_key = gen_arg_key($package, $sub, \@_);
             my $context_to_result = ( $record_to->{$arg_key} ||= [] );
             
             # Make actual call, trap exceptions or store return.

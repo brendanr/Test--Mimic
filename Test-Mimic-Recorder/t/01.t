@@ -8,7 +8,13 @@ use Test::More 'no_plan';
 # use test
 BEGIN {
     unshift( @INC, 't' );
-    use_ok( 'Test::Mimic::Recorder', qw< -f save_to -s scalar_state RecordMe > );
+    use_ok( 'Test::Mimic::Recorder', {
+        'packages'  => {
+            'RecordMe'  => {
+                'scalars'   => [ qw<scalar_state> ],
+            },
+        },
+    } );
 }
 
 my $dummy;
@@ -170,8 +176,9 @@ ok( ! $@, 'Recording complete, written to disk.' );
 Test::More::BAIL_OUT("Unable to write to disk: $@") if $@;
 
 # Read the recording in. Check the data.
+chdir('.test_mimic_recorder_data');
 
-open( my $fh, '<', 'save_to' ) or die "Unable to open file: $!";
+open( my $fh, '<', 'additional_info.rec' ) or die "Unable to open file: $!";
 my $records;
 {
     local $/ = undef;
@@ -182,7 +189,16 @@ close($fh) or die "Unable to close file: $!";
 my $ARRAY1;
 eval $records;
 
-my ( $references, $typeglobs, $extra, $order ) = @{$ARRAY1};
+my ( $typeglobs, $extra, $order ) = @{$ARRAY1};
+
+open( $fh, '<', 'history_from_recorder.rec' ) or die "Unable to open file: $!";
+{
+    local $/ = undef;
+    $records = <$fh>;
+}
+close($fh) or die "Unable to close file: $!";
+eval $records;
+my $references = $ARRAY1;
 
 # Check the flattened class hierarchy
 

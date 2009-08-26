@@ -1,0 +1,547 @@
+$ARRAY1 = [
+            { RecordMe => {
+              array_state
+                     => { ARRAY => [
+                          201,
+                          2
+                        ] },
+              BEGIN  => {},
+              dad    => { CODE => {} },
+              get    => { CODE => { "Will this key cause collisions?" => [ [
+                          [
+                            2,
+                            { 0 => [
+                              201,
+                              5
+                            ] }
+                          ],
+                          [
+                            300,
+                            [
+                              200,
+                              'bill'
+                            ]
+                          ],
+                          [
+                            2,
+                            { 0 => [
+                              201,
+                              5
+                            ] }
+                          ],
+                          [
+                            300,
+                            [
+                              200,
+                              'jane'
+                            ]
+                          ]
+                        ] ] } },
+              grandma
+                     => { CODE => { "Will this key cause collisions?" => [ [
+                          [
+                            2,
+                            {}
+                          ],
+                          [
+                            300,
+                            [
+                              200,
+                              'grandma'
+                            ]
+                          ]
+                        ] ] } },
+              grandpa
+                     => { CODE => {} },
+              hash_state
+                     => { HASH => [
+                          201,
+                          0
+                        ] },
+              import => { CODE => {} },
+              ISA    => { ARRAY => [
+                          201,
+                          1
+                        ] },
+              mom    => { CODE => { "Will this key cause collisions?" => [ [
+                          [
+                            2,
+                            {}
+                          ],
+                          [
+                            300,
+                            [
+                              200,
+                              'mom'
+                            ]
+                          ]
+                        ] ] } },
+              new    => { CODE => { "Will this key cause collisions?" => [ [
+                          [
+                            1,
+                            {}
+                          ],
+                          [
+                            300,
+                            [
+                              201,
+                              4
+                            ]
+                          ],
+                          [
+                            1,
+                            {}
+                          ],
+                          [
+                            300,
+                            [
+                              201,
+                              6
+                            ]
+                          ],
+                          [
+                            1,
+                            {}
+                          ],
+                          [
+                            300,
+                            [
+                              201,
+                              9
+                            ]
+                          ]
+                        ] ] } },
+              pos_or_neg
+                     => { CODE => { "Will this key cause collisions?" => [
+                          [
+                            [
+                              1,
+                              {}
+                            ],
+                            [
+                              300,
+                              [
+                                200,
+                                'positive'
+                              ]
+                            ],
+                            [
+                              1,
+                              {}
+                            ],
+                            [
+                              300,
+                              [
+                                200,
+                                'zero'
+                              ]
+                            ],
+                            [
+                              1,
+                              {}
+                            ],
+                            [
+                              300,
+                              [
+                                200,
+                                'negative'
+                              ]
+                            ]
+                          ],
+                          [
+                            [
+                              1,
+                              {}
+                            ],
+                            [
+                              300,
+                              [
+                                202,
+                                [
+                                  'ARRAY',
+                                  [ [
+                                    200,
+                                    'positive'
+                                  ] ]
+                                ]
+                              ]
+                            ]
+                          ],
+                          [
+                            [
+                              1,
+                              {}
+                            ],
+                            [ 300 ],
+                            [
+                              1,
+                              {}
+                            ],
+                            [ 300 ],
+                            [
+                              1,
+                              {}
+                            ],
+                            [ 300 ]
+                          ]
+                        ] } },
+              put    => { CODE => { "Will this key cause collisions?" => [
+                          ( undef ) x 2,
+                          [
+                            [
+                              3,
+                              { 0 => [
+                                201,
+                                5
+                              ] }
+                            ],
+                            [ 300 ],
+                            [
+                              3,
+                              { 0 => [
+                                201,
+                                5
+                              ] }
+                            ],
+                            [ 300 ],
+                            [
+                              3,
+                              { 0 => [
+                                201,
+                                7
+                              ] }
+                            ],
+                            [ 300 ],
+                            [
+                              3,
+                              { 0 => [
+                                201,
+                                7
+                              ] }
+                            ],
+                            [ 300 ],
+                            [
+                              3,
+                              { 0 => [
+                                201,
+                                7
+                              ] }
+                            ],
+                            [ 300 ],
+                            [
+                              3,
+                              {
+                                0 => [
+                                       201,
+                                       7
+                                     ],
+                                1 => [
+                                       201,
+                                       8
+                                     ]
+                              }
+                            ],
+                            [ 300 ],
+                            [
+                              3,
+                              { 0 => [
+                                201,
+                                10
+                              ] }
+                            ],
+                            [ 300 ],
+                            [
+                              3,
+                              {
+                                0 => [
+                                       201,
+                                       10
+                                     ],
+                                2 => [
+                                       201,
+                                       11
+                                     ]
+                              }
+                            ],
+                            [ 300 ],
+                            [
+                              3,
+                              {
+                                0 => [
+                                       201,
+                                       10
+                                     ],
+                                2 => [
+                                       201,
+                                       13
+                                     ]
+                              }
+                            ],
+                            [ 300 ]
+                          ]
+                        ] } },
+              scalar_state
+                     => { SCALAR => [
+                          201,
+                          3
+                        ] },
+              throw  => { CODE => { "Will this key cause collisions?" => [ [
+                          [
+                            1,
+                            {}
+                          ],
+                          [
+                            300,
+                            [
+                              200,
+                              'alive and well'
+                            ]
+                          ],
+                          [
+                            1,
+                            {}
+                          ],
+                          [
+                            301,
+                            [
+                              200,
+                              "throw threw at t/RecordMe.pm line 42.\n"
+                            ]
+                          ]
+                        ] ] } }
+            } },
+            { RecordMe => { ISA => {
+              Dad      => 400,
+              Grandma  => 400,
+              Grandpa  => 400,
+              Mom      => 400,
+              RecordMe => 400
+            } } },
+            [
+              [
+                'RecordMe',
+                500,
+                'pos_or_neg',
+                'Will this key cause collisions?',
+                2
+              ],
+              [
+                'RecordMe',
+                500,
+                'pos_or_neg',
+                'Will this key cause collisions?',
+                2
+              ],
+              [
+                'RecordMe',
+                500,
+                'pos_or_neg',
+                'Will this key cause collisions?',
+                2
+              ],
+              [
+                'RecordMe',
+                500,
+                'pos_or_neg',
+                'Will this key cause collisions?',
+                0
+              ],
+              [
+                'RecordMe',
+                500,
+                'pos_or_neg',
+                'Will this key cause collisions?',
+                0
+              ],
+              [
+                'RecordMe',
+                500,
+                'pos_or_neg',
+                'Will this key cause collisions?',
+                0
+              ],
+              [
+                'RecordMe',
+                500,
+                'pos_or_neg',
+                'Will this key cause collisions?',
+                1
+              ],
+              [
+                'RecordMe',
+                500,
+                'throw',
+                'Will this key cause collisions?',
+                0
+              ],
+              [
+                'RecordMe',
+                500,
+                'throw',
+                'Will this key cause collisions?',
+                0
+              ],
+              [
+                'RecordMe',
+                500,
+                'new',
+                'Will this key cause collisions?',
+                0
+              ],
+              [
+                'RecordMe',
+                500,
+                'put',
+                'Will this key cause collisions?',
+                2
+              ],
+              [
+                'RecordMe',
+                500,
+                'put',
+                'Will this key cause collisions?',
+                2
+              ],
+              [
+                'RecordMe',
+                500,
+                'get',
+                'Will this key cause collisions?',
+                0
+              ],
+              [
+                'RecordMe',
+                500,
+                'get',
+                'Will this key cause collisions?',
+                0
+              ],
+              [
+                'RecordMe',
+                500,
+                'new',
+                'Will this key cause collisions?',
+                0
+              ],
+              [
+                'RecordMe',
+                500,
+                'put',
+                'Will this key cause collisions?',
+                2
+              ],
+              [
+                'RecordMe',
+                500,
+                'put',
+                'Will this key cause collisions?',
+                2
+              ],
+              [
+                'RecordMe',
+                500,
+                'put',
+                'Will this key cause collisions?',
+                2
+              ],
+              [
+                'RecordMe',
+                500,
+                'put',
+                'Will this key cause collisions?',
+                2
+              ],
+              [
+                'RecordMe',
+                500,
+                'mom',
+                'Will this key cause collisions?',
+                0
+              ],
+              [
+                'RecordMe',
+                500,
+                'grandma',
+                'Will this key cause collisions?',
+                0
+              ],
+              [
+                'RecordMe',
+                500,
+                'new',
+                'Will this key cause collisions?',
+                0
+              ],
+              [
+                'RecordMe',
+                500,
+                'put',
+                'Will this key cause collisions?',
+                2
+              ],
+              [
+                'RecordMe',
+                500,
+                'put',
+                'Will this key cause collisions?',
+                2
+              ],
+              [
+                'RecordMe',
+                500,
+                'put',
+                'Will this key cause collisions?',
+                2
+              ]
+            ]
+          ];
+make_ro($ARRAY1->[2][0][0]);
+make_ro($ARRAY1->[2][0][2]);
+make_ro($ARRAY1->[2][1][0]);
+make_ro($ARRAY1->[2][1][2]);
+make_ro($ARRAY1->[2][2][0]);
+make_ro($ARRAY1->[2][2][2]);
+make_ro($ARRAY1->[2][3][0]);
+make_ro($ARRAY1->[2][3][2]);
+make_ro($ARRAY1->[2][4][0]);
+make_ro($ARRAY1->[2][4][2]);
+make_ro($ARRAY1->[2][5][0]);
+make_ro($ARRAY1->[2][5][2]);
+make_ro($ARRAY1->[2][6][0]);
+make_ro($ARRAY1->[2][6][2]);
+make_ro($ARRAY1->[2][7][0]);
+make_ro($ARRAY1->[2][7][2]);
+make_ro($ARRAY1->[2][8][0]);
+make_ro($ARRAY1->[2][8][2]);
+make_ro($ARRAY1->[2][9][0]);
+make_ro($ARRAY1->[2][9][2]);
+make_ro($ARRAY1->[2][10][0]);
+make_ro($ARRAY1->[2][10][2]);
+make_ro($ARRAY1->[2][11][0]);
+make_ro($ARRAY1->[2][11][2]);
+make_ro($ARRAY1->[2][12][0]);
+make_ro($ARRAY1->[2][12][2]);
+make_ro($ARRAY1->[2][13][0]);
+make_ro($ARRAY1->[2][13][2]);
+make_ro($ARRAY1->[2][14][0]);
+make_ro($ARRAY1->[2][14][2]);
+make_ro($ARRAY1->[2][15][0]);
+make_ro($ARRAY1->[2][15][2]);
+make_ro($ARRAY1->[2][16][0]);
+make_ro($ARRAY1->[2][16][2]);
+make_ro($ARRAY1->[2][17][0]);
+make_ro($ARRAY1->[2][17][2]);
+make_ro($ARRAY1->[2][18][0]);
+make_ro($ARRAY1->[2][18][2]);
+make_ro($ARRAY1->[2][19][0]);
+make_ro($ARRAY1->[2][19][2]);
+make_ro($ARRAY1->[2][20][0]);
+make_ro($ARRAY1->[2][20][2]);
+make_ro($ARRAY1->[2][21][0]);
+make_ro($ARRAY1->[2][21][2]);
+make_ro($ARRAY1->[2][22][0]);
+make_ro($ARRAY1->[2][22][2]);
+make_ro($ARRAY1->[2][23][0]);
+make_ro($ARRAY1->[2][23][2]);
+make_ro($ARRAY1->[2][24][0]);
+make_ro($ARRAY1->[2][24][2]);

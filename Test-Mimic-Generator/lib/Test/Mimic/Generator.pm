@@ -18,21 +18,22 @@ sub new {
 
 package Test::Mimic::Generator::_Implementation;
 
-use Test::Mimic::Library qw< stringify stringify_by DATA >;
+use Test::Mimic::Library qw< stringify stringify_by DATA descend >;
 use Cwd qw<abs_path>;
+use File::Copy;
 
 BEGIN {
     my $offset = 0;
-    for my $field ( qw< REFERENCES TYPEGLOBS EXTRA OPERATION_SEQUENCE > ) {
+    for my $field ( qw< TYPEGLOBS EXTRA OPERATION_SEQUENCE READ_DIR > ) {
         eval("sub $field { return $offset; }");
         $offset++;
     }
 }
 
 sub Test::Mimic::Generator::Object::load {
-    my ($self, $file_name) = @_;
+    my ($self, $dir_name) = @_;
 
-    open( my $fh, '<', $file_name ) or die "Could not open file: $!";
+    open( my $fh, '<', $dir_name . '/additional_info.rec' ) or die "Could not open file: $!";
     
     my $recorded_data;
     {
@@ -45,10 +46,10 @@ sub Test::Mimic::Generator::Object::load {
     
     my $ARRAY1;
     eval($recorded_data);
-    $self->[REFERENCES] = $ARRAY1->[0]; #This could change later, so I'm listing all the assigns explicitly.
-    $self->[TYPEGLOBS] = $ARRAY1->[1];
-    $self->[EXTRA] = $ARRAY1->[2];
-    $self->[OPERATION_SEQUENCE] = $ARRAY1->[3];
+    $self->[TYPEGLOBS] = $ARRAY1->[0]; #This could change later, so I'm listing all the assigns explicitly.
+    $self->[EXTRA] = $ARRAY1->[1];
+    $self->[OPERATION_SEQUENCE] = $ARRAY1->[2];
+    $self->[READ_DIR] = $dir_name;
 }
 
 sub Test::Mimic::Generator::Object::set_isa {
@@ -82,18 +83,21 @@ sub Test::Mimic::Generator::Object::write {
         }
     }
     
-    # Move to the $write_dir directory, creating if needed.
-    _descend($write_dir);
+    my $top_level = abs_path();
+    
+    # Move to the $write_dir/lib directory, creating dirs as needed.
+    descend($write_dir);
+    descend('lib');
    
     # Consider each package, construct and write the .pm file.
     my $start_path = abs_path();
     for my $package (@packages) {
                 
-        # Gets the name of the .pm file, descends to the location where it will be located.
+        # Gets the name of the .pm file, descends to where it will be located.
         my @dirs = split( /::/, $package );
         my $filename = pop(@dirs) . '.pm';
         for my $dir (@dirs ) {
-            _descend($dir);
+            descend($dir);
         }
         
         # Open, write and close the .pm file.
@@ -105,27 +109,11 @@ sub Test::Mimic::Generator::Object::write {
         chdir($start_path) or die "Could not change the current working directory: $!";
     }
 
-    # Write reference history
-    open( my $fh, '>', 'history.rec' ) or die "Could not open file: $!";
-    print $fh stringify( $self->[REFERENCES] );
-    close($fh) or die "Could not close file: $!";
-}
-
-# Changes the current working directory to $dir. If $dir does not exist then it will be created.
-# If it exists, but it is not a directory or any other error occurs _descend will die.
-sub _descend {
-    my ($dir) = @_;
-
-    # Move to the $dir directory, creating if needed.
-    if  ( -e $dir ) {
-        if ( ! ( -d $dir ) ) {
-            die "$dir exists, but it is not a directory.";
-        }
-    }
-    else {
-        mkdir( $dir ) or die "Could not create directory: $!";
-    }
-    chdir($dir) or die "Could not change the current working directory: $!";
+    # Rename the history file so that the controller recognizes it.
+    chdir($top_level) or die "Could not change the current working directory: $!"; 
+    copy( $self->[READ_DIR] . '/history_from_recorder.rec', $write_dir . '/history_for_playback.rec' )
+        or die "Unable to copy file: $!";
+    # NOTE: In the future we may modify the contents of the file as well.
 }
 
 { 
@@ -191,7 +179,7 @@ sub _descend {
         my @ancestors = %{ $extra->{'ISA'} };
         my $isa_code = join( "\n",
             '{',
-            '    my %ancestors = qw( ' . "@ancestors" . ' );', # Interpolation is needed here.
+            '    my %ancestors = qw< ' . "@ancestors" . ' >;', # Interpolation is needed here.
             '',
             '    sub isa {',
             '        my ( $self, $type ) = @_;',
@@ -238,7 +226,7 @@ sub _descend {
                 $sub_code .= join( "\n",
                     '',
                     '    sub ' . $typeglob . ' {',
-                    '        return execute( $behavior, @_ );',
+                    '        return execute( q<' . $package . '>, q<' . $typeglob . '>, $behavior, \@_ );',
                     '    }',
                     '}',
                     '',

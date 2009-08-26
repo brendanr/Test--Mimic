@@ -4,7 +4,12 @@ use 5.006001;
 use strict;
 use warnings;
 
-use Test::Mimic::Library qw< load_records >;
+use Test::Mimic::Library qw<
+    load_records
+    init_records
+    load_preferences
+>;
+use Test::Mimic::Generator;
 
 our $VERSION = '0.01';
 
@@ -14,7 +19,7 @@ our $VERSION = '0.01';
     my @pristine_INC;
     
     sub prepare_for_use {
-        if ( defined(@pristine_INC) ) {
+        if (@pristine_INC) {
             @INC = @pristine_INC;
             @pristine_INC = ();
         }
@@ -32,20 +37,92 @@ our $VERSION = '0.01';
         # Undo the @INC change
         prepare_for_use();
 
-        # Die if the require was not successful.
-        if ( ! $success ) {
-            die "Unable to require package <$package> from <$dir>: $@";
-        }
+        return $success;
     }
 }
 
-sub import {
-    shift(@_); # We don't want to mimic ourself. ;)
 
-    load_records( 'fake_lib/history.rec' );
-    
-    for my $package_to_mimic (@_) {
-        require_from( $package_to_mimic, 'fake_lib' );
+#    my $preferences_example = {
+#        'save'      => '.test_mimic_data',
+#        'string'    => sub {},
+#        'destring'  => sub {},
+#
+#        'key'           => sub {},
+#        'monitor_args'  => sub {},
+#        'play_args'     => sub {},
+#        'return'        => 0,
+#
+#        'packages'  => {
+#            'Foo::Bar'  => {
+#                'arrays'    => [ qw< x y z > ],
+#                'hashes'    => [ qw< x y z > ],
+#                'scalars'   => [ qw< x y z > ],
+#
+#                'key'           => sub {},
+#                'monitor_args'  => sub {},
+#                'play_args'     => sub {},
+#                'return'        => 0,
+#
+#                'subs' => {
+#                    'foo' => {
+#                        'key'           => sub {},
+#                        'monitor_args'  => sub {},
+#                        'play_args'     => sub {},
+#                        'return'        => 0,
+#                    },
+#                },
+#            },
+#        },
+#    };
+
+my $save_to;
+my $recording_required;
+
+sub import {
+    my ( $class, $preferences ) = @_;
+
+    if ( ! defined( $preferences->{'packages'} ) ) {
+        die 'No packages selected to mimic.';
+    }
+
+    $save_to = $preferences->{'save'} ||= '.test_mimic_data';
+
+    # Setup the library to behave per user preferences.
+    my $history = $save_to . '/history_for_playback.rec';
+    if ( -e $history ) { # This won't be true if we haven't recorded at all before.
+        load_records($history);
+    }
+    else {
+        init_records();
+    }
+    load_preferences($preferences);
+
+    # Attempt to load mimicked versions of each package. Note those that have not been recorded.
+    my $lib_dir = $save_to . '/lib';
+    my @to_record;
+    for my $package_to_mimic ( keys %{ $preferences->{'packages'} } ) {
+        if ( ! require_from( $package_to_mimic, $lib_dir ) ) {
+            push( @to_record, $package_to_mimic );
+        }
+    }
+
+    # Record the missing packages.
+    if ( @to_record != 0 ) {
+        $recording_required = 1;
+        require Test::Mimic::Recorder;
+        my $recorder_prefs = { 'save' => $save_to };
+        for my $package (@to_record) {
+            $recorder_prefs->{'packages'}->{$package} = $preferences->{'packages'}->{$package};
+        }
+        Test::Mimic::Recorder->import($recorder_prefs);
+    }
+}
+
+END {
+    if ($recording_required) {
+        my $generator = Test::Mimic::Generator->new();
+        $generator->load($save_to);
+        $generator->write($save_to);
     }
 }
 

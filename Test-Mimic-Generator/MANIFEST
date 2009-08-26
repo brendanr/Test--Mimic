@@ -2,5 +2,7 @@ Changes
 Makefile.PL
 MANIFEST
 README
-t/Test-Mimic-Generator.t
+t/01.t
 lib/Test/Mimic/Generator.pm
+.test_mimic_recorder_data/additional_info.rec
+.test_mimic_recorder_data/history_from_recorder.rec

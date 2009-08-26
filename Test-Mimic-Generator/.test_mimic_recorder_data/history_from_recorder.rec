@@ -902,3 +902,17 @@ $ARRAY1 = [
               undef
             ]
           ];
+make_ro($ARRAY1->[0][1][1][0]);
+make_ro($ARRAY1->[0][1][1][1]);
+make_ro($ARRAY1->[0][1][1][2]);
+make_ro($ARRAY1->[0][1][1][4]);
+make_ro($ARRAY1->[0][1][1][5]);
+make_ro($ARRAY1->[0][1][1][6]);
+make_ro($ARRAY1->[6][1][1][0]);
+make_ro($ARRAY1->[6][1][1][1]);
+make_ro($ARRAY1->[6][1][1][2]);
+make_ro($ARRAY1->[6][1][1][3]);
+make_ro($ARRAY1->[12][1][1][0]);
+make_ro($ARRAY1->[12][1][1][1]);
+make_ro($ARRAY1->[12][1][1][2]);
+make_ro($ARRAY1->[12][1][1][3]);

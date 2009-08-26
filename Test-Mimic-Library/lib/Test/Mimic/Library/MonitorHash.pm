@@ -54,9 +54,6 @@ sub FETCH {
 
 sub FIRSTKEY {
     my ($self) = @_;
-    
-        my ($a,$b,$c)=caller;print STDERR "hash first: $a $b $c\n"; #DEBUG
-
 
     keys %{ $self->[VALUE] }; # Reset hash iterator.
     return $self->NEXTKEY($self);
@@ -66,12 +63,6 @@ sub NEXTKEY {
     my ( $self, $last_key ) = @_;
     
     my $key = each %{ $self->[VALUE] };
-
-
-        my ($a,$b,$c)=caller;print STDERR "hash key: $a $b $c\n"; #DEBUG
-        print STDERR "the key: $key\n"; #DEBUG
-
-
 
     if ( ! $Test::Mimic::Recorder::SuspendRecording ) {
         push( @{ $self->[HISTORY]->[KEYS_F] }, $key ); 
