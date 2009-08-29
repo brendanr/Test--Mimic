@@ -171,7 +171,8 @@ is( $dummy, 'Mustard Plug' );
 
 # Watching a circular structure.
 
-my $cur = my $front = [];
+my $cur = my $front = [ 2, [] ];    # The default hash key generator is just smart enough
+                                    # to recognize that merely [] was not passed to put.
 #for my $i ( 1 .. 20 ) {
 #    $dummy = $cur->[0] = 2 * $i;
 #    $cur = $cur->[1] = [];

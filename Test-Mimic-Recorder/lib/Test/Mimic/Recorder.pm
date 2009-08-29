@@ -11,6 +11,7 @@ use Getopt::Long qw<GetOptionsFromArray>;
 use Data::Dump::Streamer;
 use Devel::EvalError ();
 use Cwd qw<abs_path>;
+use Scalar::Util qw<reftype>;
 
 use Test::Mimic::Library qw(
     encode
@@ -69,7 +70,7 @@ my @operation_sequence; # An ordered list of recorded operations. The first oper
 #        ) or die "Bad options: $!";
 #        $save_to ||= 'test_mimic.rec';
 #    }
-#}
+
 
 my $save_to;
 
@@ -122,18 +123,38 @@ sub _record_package {
         no strict 'refs';
         $symbol_table = \%{ $package . '::' };
     }
+
     my $fake_package = ( $typeglobs{$package} ||= {} );
     for my $symbol ( keys %{$symbol_table} ) {
-        my $typeglob = \$symbol_table->{$symbol};   # We need to take the reference here because my can not
-                                                    # handle typeglobs.
+
+        my $typeglob = \$symbol_table->{$symbol};
         my $fake_typeglob = ( $fake_package->{$symbol} ||= {} );
-        
-        # Tie arrays and hashes.
-        for my $slot ( 'ARRAY', 'HASH' ) {
-            my $reference = *{$typeglob}{$slot};
-            if ( defined $reference ) {
-                $fake_typeglob->{$slot} = encode( $reference, 0 );
+
+#        Test::More::diag("symbol: $symbol\n"); #DEBUG
+#        print STDERR "symbol: $symbol\n"; #DEBUG
+#        print STDERR (reftype(\$symbol_table->{$symbol}) . "\n"); #DEBUG
+        my $type = reftype($typeglob); 
+        if ( ! defined($type) ) {
+            next;
+        }
+        # Perl 5.10 optimizes constants by storing them as plain references, not globs initially, so
+        # we handle that here by watching the 'constant' value. This is needed because although the
+        # value itself is constant, the contents of the value may not be. If it is an array reference,
+        # for example, we can modify the backing array.
+        elsif ( $type eq 'SCALAR' || $type eq 'REF' ) {
+            $fake_typeglob->{'CONSTANT'} = encode( ${$typeglob}, 0 );
+        }
+        elsif ( $type eq 'GLOB' ) {
+            # Tie arrays and hashes.
+            for my $slot ( 'ARRAY', 'HASH' ) {
+                my $reference = *{$typeglob}{$slot};
+                if ( defined $reference ) {
+                    $fake_typeglob->{$slot} = encode( $reference, 0 );
+                }
             }
+        }
+        else {
+            die "Can not handle the type <$type> of symbol $symbol in package $package.";
         }
     }
     
@@ -153,7 +174,11 @@ sub _record_package {
     
     # Tie all scalars.
     for my $scalar ( keys %all_scalars ) {
-       $fake_package->{$scalar}->{'SCALAR'} = encode( *{$symbol_table->{$scalar}}{'SCALAR'}, 0 );
+        my $typeglob = \$symbol_table->{$scalar};
+ 
+        if ( reftype($typeglob) eq 'GLOB' ) { # Ignore constant optimizations, handled above in array/hash code.
+            $fake_package->{$scalar}->{'SCALAR'} = encode( *{$typeglob}{'SCALAR'}, 0 );
+        }
     }
     
     #Handle inheritance issues regarding both isa and can.
@@ -173,12 +198,12 @@ sub _record_package {
                 goto &{$original_sub};
             }
             
-            # TODO: Query user settings regarding the volatility of the arguments.
-            my $arg_signature = monitor_args( $package, $sub, \@_ );
-            
             # Set up the recording storage for this call.
             my $arg_key = gen_arg_key($package, $sub, \@_);
             my $context_to_result = ( $record_to->{$arg_key} ||= [] );
+            
+            # TODO: Query user settings regarding the volatility of the arguments.
+            my $arg_signature = monitor_args( $package, $sub, \@_ );
             
             # Make actual call, trap exceptions or store return.
             local $Test::Mimic::Recorder::SuspendRecording = 1; # Suspend recording. We don't wan't to record
@@ -261,7 +286,12 @@ sub _get_hierarchy_info {
         $symbol_table = \%{ $class . '::' };
     }
     for my $symbol ( keys %{$symbol_table} ) {
-        if ( defined *{$symbol_table->{$symbol}}{'CODE'} ) {
+        my $typeglob = \$symbol_table->{$symbol};
+
+        # Note if the symbol contains a subroutine.
+        # Ignore constant optimizations, handled in _record_package except for the
+        # case of inherited constants. Do we need to take care of this case?
+        if ( ( reftype($typeglob) eq 'GLOB' ) && defined( *{$typeglob}{'CODE'} ) ) {
             $full_subs{$symbol} = ARBITRARY;
         }
     }

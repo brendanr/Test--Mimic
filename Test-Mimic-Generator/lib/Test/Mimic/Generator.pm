@@ -43,12 +43,11 @@ sub Test::Mimic::Generator::Object::load {
     }
 
     close($fh) or die "Could not close file: $!";
-    
-    my $ARRAY1;
-    eval($recorded_data);
-    $self->[TYPEGLOBS] = $ARRAY1->[0]; #This could change later, so I'm listing all the assigns explicitly.
-    $self->[EXTRA] = $ARRAY1->[1];
-    $self->[OPERATION_SEQUENCE] = $ARRAY1->[2];
+    my $living_data = destringify($recorded_data); 
+
+    $self->[TYPEGLOBS] = $living_data->[0]; #This could change later, so I'm listing all the assigns explicitly.
+    $self->[EXTRA] = $living_data->[1];
+    $self->[OPERATION_SEQUENCE] = $living_data->[2];
     $self->[READ_DIR] = $dir_name;
 }
 
@@ -176,6 +175,19 @@ sub Test::Mimic::Generator::Object::write {
         $package_var_code .= "\n" . '}' . "\n\n";
         print $fh $package_var_code;
 
+        # Create code for generating constants.
+        my $constant_code = 'use constant {' . "\n";
+        for my $symbol ( keys %{$pseudo_symbol_table} ) {
+            my $typeglob = $pseudo_symbol_table->{$symbol};
+            if ( exists( $typeglob->{'CONSTANT'} ) ) {
+                $constant_code .= '    q<' . $symbol . '> => decode( destringify( q<'
+                    . stringify( $typeglob->{'CONSTANT'} ) . '> ) ),' . "\n";
+                
+            }
+        }
+        $constant_code .= '}' . "\n\n";
+        print $fh, $constant_code;
+
         my @ancestors = %{ $extra->{'ISA'} };
         my $isa_code = join( "\n",
             '{',
@@ -205,8 +217,9 @@ sub Test::Mimic::Generator::Object::write {
         print $fh $isa_code;
 
         # Create code for user defined subroutines.
-        for my $typeglob ( keys %{$pseudo_symbol_table} ) {
-            if ( exists( $pseudo_symbol_table->{$typeglob}->{'CODE'} ) ) {
+        for my $symbol ( keys %{$pseudo_symbol_table} ) {
+            my $typeglob = $pseudo_symbol_table->{$symbol};
+            if ( exists( $typeglob->{'CODE'} ) ) {
                 my $sub_code = '{' . "\n";  # Of course, I could say "{\n". I am being overly verbose in an
                                             # attempt to very explicitly separate out strings that
                                             # interpolate. This is a problem because the perl code that I am
@@ -215,7 +228,7 @@ sub Test::Mimic::Generator::Object::write {
                                             # array) I don't want it to bite me.
 
                 # Create a list of lines of code for the behavior hash.
-                my $behavior_code = stringify( $pseudo_symbol_table->{$typeglob}->{'CODE'} );
+                my $behavior_code = stringify( $typeglob->{'CODE'} );
                 my @behavior_lines = split( /\n/, $behavior_code );
                 $behavior_lines[0] =~ s/^.*?=/my \$behavior = /; # Change name of dumped hash.
                 
@@ -225,8 +238,8 @@ sub Test::Mimic::Generator::Object::write {
 
                 $sub_code .= join( "\n",
                     '',
-                    '    sub ' . $typeglob . ' {',
-                    '        return execute( q<' . $package . '>, q<' . $typeglob . '>, $behavior, \@_ );',
+                    '    sub ' . $symbol . ' {',
+                    '        return execute( q<' . $package . '>, q<' . $symbol . '>, $behavior, \@_ );',
                     '    }',
                     '}',
                     '',

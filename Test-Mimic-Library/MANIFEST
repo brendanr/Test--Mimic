@@ -2,5 +2,5 @@ Changes
 Makefile.PL
 MANIFEST
 README
-t/Test-Mimic-Library.t
+t/01.t
 lib/Test/Mimic/Library.pm
