@@ -4,13 +4,16 @@ use 5.006001;
 use strict;
 use warnings;
 
-our $VERSION = 0.001_001;
+our $VERSION = 0.007_003;
 
+#Returns the name of the package that objects returned by new are blessed into. For encapuslation
+#purposes this may not be Test::Mimic::Generator. Should be considered protected.
 sub get_object_package {
     my ($class) = @_;
     return $class . '::Object';
 }
 
+# See the POD documentation below.
 sub new {
     my ($class) = @_;
     return bless( [], $class->get_object_package() );
@@ -18,10 +21,12 @@ sub new {
 
 package Test::Mimic::Generator::_Implementation;
 
-use Test::Mimic::Library qw< stringify stringify_by DATA descend >;
+use Test::Mimic::Library qw< stringify stringify_by destringify DATA descend >;
 use Cwd qw<abs_path>;
 use File::Copy;
+use Data::Dumper;
 
+# Construct constants to access member variables.
 BEGIN {
     my $offset = 0;
     for my $field ( qw< TYPEGLOBS EXTRA OPERATION_SEQUENCE READ_DIR > ) {
@@ -30,6 +35,7 @@ BEGIN {
     }
 }
 
+# See the POD documentation below.
 sub Test::Mimic::Generator::Object::load {
     my ($self, $dir_name) = @_;
 
@@ -51,22 +57,7 @@ sub Test::Mimic::Generator::Object::load {
     $self->[READ_DIR] = $dir_name;
 }
 
-sub Test::Mimic::Generator::Object::set_isa {
-
-}
-
-sub Test::Mimic::Generator::Object::set_sub {
-
-}
-
-sub Test::Mimic::Generator::Object::set_var {
-
-}
-
-sub Test::Mimic::Generator::Object::enforce_operation_sequence {
-
-}
-
+# See the POD documentation below.
 sub Test::Mimic::Generator::Object::write {
     my ( $self, $write_dir, @packages ) = @_;
 
@@ -124,6 +115,8 @@ sub Test::Mimic::Generator::Object::write {
         'SCALAR'    => 'Test::Mimic::Library::PlayScalar',
     );
 
+    # Accepts a package name, the corresponding pseudo symbol table, the corresponding extra hash ref
+    # and a filehandle to write to. Assembles the code for the mock package and writes it to disk. 
     sub _create {
         my ( $package, $pseudo_symbol_table, $extra, $fh ) = @_;
 
@@ -139,7 +132,7 @@ sub Test::Mimic::Generator::Object::write {
             '',
             'use Scalar::Util;',
             '',
-            'use Test::Mimic::Library qw< execute get_references HISTORY >;',
+            'use Test::Mimic::Library qw< execute get_references HISTORY decode destringify >;',
             'use Test::Mimic::Library::PlayScalar;',
             'use Test::Mimic::Library::PlayArray;',
             'use Test::Mimic::Library::PlayHash;',
@@ -156,19 +149,18 @@ sub Test::Mimic::Generator::Object::write {
         );
         for my $typeglob ( keys %{$pseudo_symbol_table} ) {
 
-            my $full_name = $package . $typeglob;
-
             # Tie the current typeglob
             my %slots = %{ $pseudo_symbol_table->{$typeglob} };
             delete $slots{'CODE'};
+            delete $slots{'CONSTANT'};
             # NOTE: You may (some day) need to delete other types too.
             for my $type ( keys %slots ) {
                 $package_var_code .= "\n" . '    tie( '
                     . $TYPE_TO_SIGIL{$type} . $package . '::' . $typeglob # Full name including sigil
                     . ', q<' . $TYPE_TO_TIE{$type} 
                     . '>, $references->['
-                    . $pseudo_symbol_table->{$typeglob}->{$type}->[DATA]    # Index for the reference, ...->[ENCODE_TYPE]
-                                                                            # must be VOLATILE. Check?
+                    . $slots{$type}->[DATA]    # Index for the reference, ...->[ENCODE_TYPE]
+                                               # must be VOLATILE. Check?
                     . ']->[HISTORY] );';
             }
         }
@@ -180,13 +172,13 @@ sub Test::Mimic::Generator::Object::write {
         for my $symbol ( keys %{$pseudo_symbol_table} ) {
             my $typeglob = $pseudo_symbol_table->{$symbol};
             if ( exists( $typeglob->{'CONSTANT'} ) ) {
-                $constant_code .= '    q<' . $symbol . '> => decode( destringify( q<'
-                    . stringify( $typeglob->{'CONSTANT'} ) . '> ) ),' . "\n";
+                $constant_code .= '    ' . _string_to_perl($symbol) . ' => decode( destringify( '
+                    . _string_to_perl( stringify( $typeglob->{'CONSTANT'} ) ) . ' ) ),' . "\n";
                 
             }
         }
-        $constant_code .= '}' . "\n\n";
-        print $fh, $constant_code;
+        $constant_code .= '};' . "\n\n";
+        print $fh $constant_code;
 
         my @ancestors = %{ $extra->{'ISA'} };
         my $isa_code = join( "\n",
@@ -216,7 +208,8 @@ sub Test::Mimic::Generator::Object::write {
         # TODO: Make this dependent on user options.
         print $fh $isa_code;
 
-        # Create code for user defined subroutines.
+        # Create code for user defined subroutines
+        my $prototypes = $extra->{'PROTOTYPES'};
         for my $symbol ( keys %{$pseudo_symbol_table} ) {
             my $typeglob = $pseudo_symbol_table->{$symbol};
             if ( exists( $typeglob->{'CODE'} ) ) {
@@ -227,18 +220,14 @@ sub Test::Mimic::Generator::Object::write {
                                             # interpolated. If I come back to this line and add a scalar (or
                                             # array) I don't want it to bite me.
 
-                # Create a list of lines of code for the behavior hash.
+                # Create the code for the behavior hash.
                 my $behavior_code = stringify( $typeglob->{'CODE'} );
-                my @behavior_lines = split( /\n/, $behavior_code );
-                $behavior_lines[0] =~ s/^.*?=/my \$behavior = /; # Change name of dumped hash.
+                $sub_code .= 'my $behavior = destringify( ' . _string_to_perl($behavior_code) . ' );' . "\n";
                 
-                for my $line (@behavior_lines) {
-                    $sub_code .= '    ' . $line . "\n";
-                }
-
+                my $prototype = $prototypes->{$symbol};
                 $sub_code .= join( "\n",
                     '',
-                    '    sub ' . $symbol . ' {',
+                    '    sub ' . $symbol . ( defined($prototype) ? " ($prototype)" : '' ) . ' {',
                     '        return execute( q<' . $package . '>, q<' . $symbol . '>, $behavior, \@_ );',
                     '    }',
                     '}',
@@ -252,47 +241,82 @@ sub Test::Mimic::Generator::Object::write {
     }
 }
 
+# Given a string returns a Perl expression (as a string) that evaluates to the passed string.
+sub _string_to_perl {
+    my ($string) = @_;
+
+    my $code = Dumper($string);
+    $code =~ s/^.*?= //;
+    $code =~ s/;.*?\n$//;
+
+    return $code;
+}
+
 1;
 __END__
-# Below is stub documentation for your module. You'd better edit it!
 
 =head1 NAME
 
-Test::Mimic::Generator - Perl extension for blah blah blah
+Test::Mimic::Generator - Perl module for generating mock perl packages from data recorded by Test::Mimic::Recorder.
 
 =head1 SYNOPSIS
 
   use Test::Mimic::Generator;
-  blah blah blah
+
+  my $generator = Test::Mimic::Generator->new();
+  $generator->load('.test_mimic_recorder_data');
+  $generator->write('.test_mimic_data');
 
 =head1 DESCRIPTION
 
-Stub documentation for Test::Mimic::Generator, created by h2xs. It looks like the
-author of the extension was negligent enough to leave the stub
-unedited.
+=item Test::Mimic::Generator->new()
 
-Blah blah blah.
+Constructs and returns a new generator object.
+
+=cut
+
+=item $generator->load($read_directory)
+
+Accepts the name of a directory to load information from. Test::Mimic::Recorder must have written to this
+directory. Can be called multiple times. Only the information from the last call will be used. Later in
+development we should be able to merge multiple recordings.
+
+=cut
+
+=item $generator->write($write_directory)
+
+Accepts the name of a directory to store the generated .pm files and other information in. This directory
+need not exist. The .pm files will be stored in "$write_directory/lib". Additional history information will
+be recorded in "$write_directory/history_for_playback.rec".
+
+=cut
+
+=item NOTE
+ 
+It should be mentioned that the generated .pm files
+require that Test::Mimic::Library be in a certain state. Specifically,
+Test::Mimic::Library::load_records("$write_directory/history_for_playback.rec") should have been called.
+Typically this is handled by the controller, Test::Mimic, but if you are using the files independently you
+must do this yourself.
 
 =head2 EXPORT
 
-None by default.
-
-
+Nothing available for export.
 
 =head1 SEE ALSO
 
-Mention other useful documentation such as the documentation of
-related modules or operating system documentation (such as man pages
-in UNIX), or any relevant external documentation such as RFCs or
-standards.
+Other members of the Test::Mimic suite:
+Test::Mimic
+Test::Mimic::Recorder
+Test::Mimic::Library
 
-If you have a mailing list set up for your module, mention it here.
+The latest source for the Test::Mimic suite is available at:
 
-If you have a web site set up for your module, mention it here.
+git://github.com/brendanr/Test--Mimic.git
 
 =head1 AUTHOR
 
-Brendan Roof, E<lt>broof@whitepages.comE<gt>
+Brendan Roof, E<lt>brendanroof@gmail.comE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 

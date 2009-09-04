@@ -6,6 +6,11 @@ use warnings;
 use Mom;
 use Dad;
 
+use constant {
+    PI => 3, #.141592...
+    ARR => [ qw( a b c d e f g h i j k l m n o p q r s t u v w x y z ) ],
+};
+
 our @ISA = qw( Mom Dad );
 our $scalar_state;
 our @array_state;
@@ -43,6 +48,11 @@ sub throw {
     } else {
         return "alive and well";
     }
+}
+
+sub with_prototype ($@) {
+    return 'with_implicit_context_coercion_template_for_input_parameters if Tom Christiansen had his way. ;)';
+    # That's a much better name. Seriously.
 }
 
 1;

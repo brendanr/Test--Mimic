@@ -4,6 +4,8 @@ use 5.006001; # for my $filehandle
 use strict;
 use warnings;
 
+our $VERSION = 0.001_003;
+
 use Test::Mimic::Library::MonitorScalar;
 use Test::Mimic::Library::MonitorArray;
 use Test::Mimic::Library::MonitorHash;
@@ -72,7 +74,6 @@ our @EXPORT = qw(
 	
 );
 
-our $VERSION = '0.01';
 
 use constant {
     # Array indices for the three contexts
@@ -113,9 +114,12 @@ my $references; # A table containing recorded data for volatile references and o
                 # given reference is simply the number of references
                 # monitor saw before the reference under
                 # consideration.
-my $address_to_index;
-my $is_alive;
-my $index_to_reference;
+my $address_to_index;   # A hash ref mapping the address of a reference to its index in $references.
+my $is_alive;           # A hash ref mapping the address of a reference to its current alive state. This will
+                        # be defined if the value stored at $address_to_index is current, undefined
+                        # otherwise.
+my $index_to_reference; # Almost, but not quite, the inverse of $address_to_index. Rather than mapping to the
+                        # address of the reference it maps to the reference itself.
 
 # Preloaded methods go here.
 
@@ -863,43 +867,302 @@ __END__
 
 =head1 NAME
 
-Test::Mimic::Library - Perl extension for blah blah blah
+Test::Mimic::Library - Perl library supporting the Test::Mimic suite. 
 
 =head1 SYNOPSIS
 
-  use Test::Mimic::Library;
-  blah blah blah
+  use Test::Mimic::Library qw< encode >;
+
+  my $coded_val = encode( 'a string', 0 );
 
 =head1 DESCRIPTION
 
-Stub documentation for Test::Mimic::Library, created by h2xs. It looks like the
-author of the extension was negligent enough to leave the stub
-unedited.
+Test::Mimic::Library provides a number of tools required in common by Test::Mimic, Test::Mimic::Recorder,
+and Test::Mimic::Generator. It also stores internally certain portions of the recording.
 
-Blah blah blah.
+=over
+
+=item init_records()
+
+Prepares the library for a new recording.
+
+=cut
+
+=item load_records($file_name)
+
+Loads the portion of the recording specific to the library. Prepares for playback. Dies on any
+IO errors.
+
+=cut
+
+=item get_references()
+
+Returns the reference table. This subroutine is for use by generated code files and should
+be considered private to the Test::Mimic suite.
+
+=cut
+
+=item write_records($file_name)
+
+Write the portion of the recording specific to the library. Dies on any IO errors.
+
+=cut
+
+=item descend($dir_name)
+
+Changes the current directory to $dir_name creating it if necessary. Dies on IO errors.
+
+=cut
+
+=item execute( $package, $subroutine_name, $behavior_hash, $args )
+
+Emulates "$package::$subroutine_name" based on the information stored in $behavior_hash given
+$args. This subroutine should be considered private to the Test::Mimic suite.
+
+=cut
+
+=item gen_arg_key_by($preferences)
+
+Accepts a hash reference describing which key generator to use given package and subroutine names.
+It should have the following structure:
+
+{
+    'key' => \&generic_sub,
+    'packages' => {
+        'Foo::Bar' => {
+            'key' => \%more_specific,
+            'subs' => {
+                'foo' => {
+                    'key' => \&most_specific,
+                }
+            }
+        }
+    }
+}
+
+Each of the subroutines should accept an array reference to the arguments and return a key suitable for use
+in a hash. Furthermore, they must be the same from run to run and MUST use get_id if they access the state
+of any particular argument.
+
+=cut
+
+=item gen_arg_key( $package, $subroutine, $args )
+
+Accepts the name of the package, the name of the subroutine currently being emulated (typically with
+execute) and an array reference to the arguments. Returns a hash key based on those arguments using
+the requested key generator, or, if none was specified, the default key generator. The generator will be
+selected from most to least specific. The default is to encode the arguments by expanding references into
+values for 2 levels and then merely note the type. The ids returned by get_id are used instead if an
+argument is being micked. stringify is used to convert the above structure into a key.
+
+=cut
+
+=item get_id($value)
+
+When constructing a key in your generator you can't wildly examine any old argument. This is because
+the arguments are actually tied values and you will probably consume their state. Call get_id first.
+If undef is returned you can proceed, but if you have an aggregate you must use get_id recursively.
+Otherwise you will be given a unique integer id. Incorporate this into your key instead and do not
+examine the state.
+
+=cut
+
+=item stringify_by($coderef)
+
+Accepts a reference to a subroutine that takes a single argument and returns a stringified
+version of it. This subroutine will then be used for all stringification in the Test::Mimic suite. It is
+important that identical structures stringify to the same value from one run to another. Specifically, the
+order of hash keys must remain the same or the default key generator will break. If you really need to you
+could ignore this, but you would need a different key generator.
+
+=cut
+
+=item stringify($value)
+
+Returns a stringified version of $value. The behavior of stringify can be set with stringify_by. If this
+was not done then a default stringifier will be used.
+
+=cut
+
+=item destringify_by($coderef)
+
+Accepts a reference to a subroutine that is the inverse of the subroutine that stringify_by was given.
+All destringification done in the Test::Mimic suite will then use this subroutine.
+
+=cut
+
+=item destringify($stringified_value)
+
+The inverse of stringify.
+
+=cut
+
+=item monitor_args_by($preferences)
+
+Accepts a hash reference describing which argument monitor to use given package and subroutine names.
+It should have the following structure:
+
+{
+    'monitor_args' => \&generic_sub,
+    'packages' => {
+        'Foo::Bar' => {
+            'monitor_args' => \%more_specific,
+            'subs' => {
+                'foo' => {
+                    'monitor_args' => \&most_specific,
+                }
+            }
+        }
+    } 
+}       
+            
+Each of the subroutines should accept an array reference to the arguments and return a scalar representing
+the history of the monitored arguments. Only those arguments the user considers important need be monitored.
+
+=cut
+
+=item monitor_args( $package, $subroutine, $arguments )
+
+Accepts the package and name of the subroutine being called along with an array reference to its arguments.
+Monitors the arguments with the argument monitor requested with a call to monitor_args_by, or, if none was
+requested, the default. This is simply to monitor each argument that is not read only. Returns a scalar
+that should passed to play_args during the playback phase.
+
+=cut
+
+=item play_args_by($preferences)
+
+Accepts a hash reference describing which argument player to use given package and subroutine names.
+It should have the following structure:
+
+{
+    'play_args' => \&generic_sub,
+    'packages' => {
+        'Foo::Bar' => {
+            'play_args' => \%more_specific,
+            'subs' => {
+                'foo' => {
+                    'play_args' => \&most_specific,
+                }
+            }
+        }
+    }   
+}       
+            
+Each of the subroutines should accept an array reference to the arguments and the scalar returned by
+monitor_args. They should hijack the arguments as necessary and need not return anything.
+
+=cut
+
+=item play_args( $package, $subroutine, $arguments, $coded_arguments )
+
+Accepts the package and name of the subroutine being called, an array reference to its arguments and
+the scalar returned by monitor_args. The arguments will be hijacked as specified with play_args_by, or,
+if no behavior was specified, the default -- which corresponds to the default monitor_args behavior.
+
+=cut
+
+=item monitor($value)
+
+Accepts an arbitrary scalar, ensures that its value over time will be recorded (if it is a reference), and
+returns a scalar representing it. This return value will be suitable for stringification.
+
+=cut
+
+=item encode( $value, $volatility_depth )
+
+Accepts an arbitrary scalar and the depth at which the dereferenced value may be subject to change (assuming
+that it is a reference). 0 is for the passed reference itself, 1, for example, may be the elements of an
+array reference, but not the array itself. Circular structures are not allowed unless they are contained
+entirely below the volatility depth. The history of the values above the volatility depth is not recorded.
+Returns a scalar representing the value. This will be suitable for stringification.
+
+=cut
+
+=item decode($coded_value)
+
+Given the coded value returned by encode or monitor returns an approximation to the original. This method is
+somewhat smart -- the same coded value passed to decoded will return the exact same reference, i.e.
+refaddr( decode($coded_value) ) == refaddr( decode($coded_value) ). If history was recorded, as opposed to
+purely state, this information will be used when the user accesses the variable.
+
+=cut
+
+=item play($coded_value)
+
+Given the coded value returned by decode returns an approximation to the original. Note that decode can
+handle anything returned by either monitor or encode, but play can handle only monitor returns, so it
+almost always makes sense to use decode.
+
+=cut
+
+=back
 
 =head2 EXPORT
 
-None by default.
+None by default. The following are exported by request:
 
+    SCALAR_CONTEXT
+    LIST_CONTEXT
+    VOID_CONTEXT
+    STABLE
+    VOLATILE
+    NESTED
+    RETURN
+    EXCEPTION
+    ARBITRARY
+    CODE_E
+    SCALAR_E
+    ARRAY_E
+    HASH_E
+    ENCODE_TYPE
+    DATA
+    DATA_TYPE
+    HISTORY
+    CLASS
 
+    encode
+    decode
+    monitor
+    play
+    monitor_args
+    monitor_args_by
+    play_args
+    play_args_by
+    gen_arg_key
+    gen_arg_key_by
+    stringify
+    stringify_by
+    destringify
+    destringify_by
+    init_records
+    load_records
+    write_records
+    get_references
+    execute
+    descend
+    load_preferences
 
 =head1 SEE ALSO
 
-Mention other useful documentation such as the documentation of
-related modules or operating system documentation (such as man pages
-in UNIX), or any relevant external documentation such as RFCs or
-standards.
+Other members of the Test::Mimic suite:
+Test::Mimic
+Test::Mimic::Recorder
+Test::Mimic::Generator
 
-If you have a mailing list set up for your module, mention it here.
+The latest source for the Test::Mimic suite is available at:
 
-If you have a web site set up for your module, mention it here.
+git://github.com/brendanr/Test--Mimic.git
 
 =head1 AUTHOR
 
-Brendan Roof, E<lt>broof@E<gt>
+Concept by Tye McQueen.
+
+Development by Brendan Roof, E<lt>brendanroof@gmail.com<gt>
 
 =head1 COPYRIGHT AND LICENSE
+
+Made possible by WhitePages Inc.
 
 Copyright (C) 2009 by Brendan Roof
 

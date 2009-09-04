@@ -2,6 +2,7 @@ use strict;
 use warnings;
 
 use Data::Dump::Streamer qw<:undump>;
+use Test::Mimic::Library qw<destringify>;
 
 use Test::More 'no_plan';
 
@@ -24,6 +25,11 @@ my %dummy;
 my @calls;
 
 # Generate some activity for the recorder to record.
+
+# Access some constants.
+
+$dummy = RecordMe::PI;
+$dummy = RecordMe::ARR;
 
 # Access and manipulate package variables.
 
@@ -186,10 +192,7 @@ my $records;
 }
 close($fh) or die "Unable to close file: $!";
 
-my $ARRAY1;
-eval $records;
-
-my ( $typeglobs, $extra, $order ) = @{$ARRAY1};
+my ( $typeglobs, $extra, $order ) = @{ destringify($records) };
 
 open( $fh, '<', 'history_from_recorder.rec' ) or die "Unable to open file: $!";
 {
@@ -197,8 +200,11 @@ open( $fh, '<', 'history_from_recorder.rec' ) or die "Unable to open file: $!";
     $records = <$fh>;
 }
 close($fh) or die "Unable to close file: $!";
-eval $records;
-my $references = $ARRAY1;
+my $references = destringify($records);
+
+# Check the prototype info.
+
+is( $extra->{'RecordMe'}{'PROTOTYPES'}{'with_prototype'}, '$@', 'Prototype recorded' );
 
 # Check the flattened class hierarchy
 
@@ -239,12 +245,15 @@ for my $key ( 'Gangsters', 'Ojos Sexys', 'Spiderwebs' ) {
 }
 
 # Check a glob
-my $key = "\$ARRAY1 = [\n            202,\n            [\n              'ARRAY',\n      ".
-    "        [\n                [\n                  200,\n                  'Re".
-    "cordMe'\n                ],\n                [\n                  200,\n    ".
-    "              'Does this return grandma?'\n                ]\n            ".
-    "  ]\n            ]\n          ];\n";
-                                             # So very very very very very very brittle... (The number of very's is the number
+my $key = "\$TML_destringify_val = [\n                         202,\n                 ".
+    "        [\n                           'ARRAY',\n                          ".
+    " [\n                             [\n                               200,\n  ".
+    "                             'RecordMe'\n                             ],\n".
+    "                             [\n                               200,\n     ".
+    "                          'Does this return grandma?'\n                  ".
+    "           ]\n                           ]\n                         ]\n   ".
+    "                    ];\n";
+                                             # So very very very very very very very brittle... (The number of very's is the number
                                              # of times this code has bitten me in the ass. NEW CONCERN: Our unary
                                              # counting system is becoming problematic. Perhaps we can switch to
                                              # binary, e.g. extremely very would be 2, extremely very extremely would

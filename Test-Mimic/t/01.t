@@ -18,6 +18,11 @@ my %dummy;
 
 my @calls;
 
+# Access some constants.
+
+$dummy = RecordMe::PI;
+is( $dummy, 3, 'scalar constant works' );
+
 # Access and manipulate package variables.
 
 $dummy = $RecordMe::scalar_state;# = 47; # Tests FETCH

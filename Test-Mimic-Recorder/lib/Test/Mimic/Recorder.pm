@@ -31,7 +31,7 @@ use Test::Mimic::Library qw(
     ARBITRARY
 );
 
-our $VERSION = 0.001_001;
+our $VERSION = 0.009_001;
 our $SuspendRecording = 0; # Turn off recording.
 my  $done_writing = 0;
 
@@ -127,34 +127,43 @@ sub _record_package {
     my $fake_package = ( $typeglobs{$package} ||= {} );
     for my $symbol ( keys %{$symbol_table} ) {
 
-        my $typeglob = \$symbol_table->{$symbol};
+        my $typeglob = \$symbol_table->{$symbol};   # According to Tye it is better to handle glob refs than
+                                                    # globs themselves.
         my $fake_typeglob = ( $fake_package->{$symbol} ||= {} );
 
-#        Test::More::diag("symbol: $symbol\n"); #DEBUG
-#        print STDERR "symbol: $symbol\n"; #DEBUG
-#        print STDERR (reftype(\$symbol_table->{$symbol}) . "\n"); #DEBUG
-        my $type = reftype($typeglob); 
-        if ( ! defined($type) ) {
-            next;
+        my $symbol_type = reftype( ${$typeglob} );
+        if ( ! defined($symbol_type) ) {
+            my $pointer_type = reftype($typeglob);
+            if ( $pointer_type eq 'GLOB' ) {
+                # Tie arrays and hashes.
+                for my $slot ( 'ARRAY', 'HASH' ) {
+                    my $reference = *{$typeglob}{$slot};
+                    if ( defined $reference ) {
+                        $fake_typeglob->{$slot} = encode( $reference, 0 );
+                    }
+                }
+            }
+            # Perl apparently sometimes stores subroutine stub declarations as simple
+            # scalars. We would like to leave these alone. (See the Perl 5.10
+            # delta for one reference.)
+            elsif ( $pointer_type ne 'SCALAR' ) {
+                warn "The symbol <$symbol> in package <$package> with type <$pointer_type> is neither a glob,"
+                    . ' constant optimization or subroutine stub declaration. Ignoring and proceeding.';
+            }
         }
         # Perl 5.10 optimizes constants by storing them as plain references, not globs initially, so
         # we handle that here by watching the 'constant' value. This is needed because although the
         # value itself is constant, the contents of the value may not be. If it is an array reference,
         # for example, we can modify the backing array.
-        elsif ( $type eq 'SCALAR' || $type eq 'REF' ) {
-            $fake_typeglob->{'CONSTANT'} = encode( ${$typeglob}, 0 );
-        }
-        elsif ( $type eq 'GLOB' ) {
-            # Tie arrays and hashes.
-            for my $slot ( 'ARRAY', 'HASH' ) {
-                my $reference = *{$typeglob}{$slot};
-                if ( defined $reference ) {
-                    $fake_typeglob->{$slot} = encode( $reference, 0 );
-                }
-            }
+        elsif ( $symbol_type eq 'REF' || $symbol_type eq 'SCALAR' ) {
+            # If we are dealing with a simple scalar then it won't be tied anyways. Otherwise, an $at_level
+            # of 1 will start the monitoring/tying on the elements of the aggregate/dereferenced value rather
+            # than the aggregate/reference itself.
+            $fake_typeglob->{'CONSTANT'} = encode( ${${$typeglob}}, 1 ); 
         }
         else {
-            die "Can not handle the type <$type> of symbol $symbol in package $package.";
+            warn "The symbol <$symbol> in package <$package> with reftype <$symbol_type> is neither a glob,"
+                . ' constant optimization or subroutine stub declaration. Ignoring and proceeding.';
         }
     }
     
@@ -183,7 +192,7 @@ sub _record_package {
     
     #Handle inheritance issues regarding both isa and can.
     my ( $full_ISA, $all_subs ) = _get_hierarchy_info($package);
-    $extra{$package}{'ISA'} = $full_ISA; 
+    $extra{$package}{'ISA'} = $full_ISA;
  
     # Wrap all subroutines. (Or rather, redefine each subroutine to record the operation of the original.)
     for my $sub ( keys %{$all_subs} ) {
@@ -260,11 +269,19 @@ sub _record_package {
             }
         };
         
+        # Handle prototypes
+        my $replacement = $wrapper_sub;
+        my $proto = prototype($original_sub);
+        if ( defined($proto) ) {
+            eval "\$replacement = sub ($proto) { return \$wrapper_sub->(\@_); };"; 
+        }
+        $extra{$package}{'PROTOTYPES'}{$sub} = $proto;
+         
         # Redefine the original subroutine
         {
             no warnings 'redefine';
             no strict 'refs';
-            *{ $package . '::' . $sub } = $wrapper_sub;
+            *{ $package . '::' . $sub } = $replacement;
         }
     }
 }

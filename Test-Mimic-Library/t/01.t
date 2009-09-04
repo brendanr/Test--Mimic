@@ -1,7 +1,7 @@
 use Test::More 'no_plan';
 
 use Data::Dump::Streamer qw< Dump >;
-
+use Cwd qw<abs_path>;
 BEGIN {
     use_ok( 'Test::Mimic::Library', qw<
 
@@ -53,6 +53,35 @@ init_records();
 is_deeply( get_references(), [], 'a get_references() call after init_records() suggests that initialization'
     . ' occurred properly.' );
 
+ok( Test::Mimic::Library::_is_pattern( qr/foo/ ), 'positive pattern identification' );
+ok( ! Test::Mimic::Library::_is_pattern( 4 ), 'negative pattern identification' );
+
+is( gen_arg_key( 'Foo::Bar', 'foo', 4 ), '$TML_destringify_val = [' . "\n" .
+                                         "                         200,\n" .
+                                         "                         4\n" .
+                                         "                       ];\n",
+'testing default key generator' );
+
+gen_arg_key_by( {
+    'key' => sub { 5 },
+    'packages' => {
+        'Foo::Bar' => {
+            'key' => sub { 6 },
+            'subs' => {
+                'foo' => {
+                    'key' => sub { 7 },
+                }
+            },
+        },
+    },
+} );
+
+my @args = ('dummy_val');
+is( gen_arg_key( 'Bar::Foo', 'foo', \@args ), 5, 'testing gen_arg_key preferences, generic' );
+is( gen_arg_key( 'Foo::Bar', 'bar', \@args ), 6, 'testing gen_arg_key preferences, package specific' );
+is( gen_arg_key( 'Foo::Bar', 'foo', \@args ), 7, 'testing gen_arg_key preferences, subroutine specific' );
+
+
 my $light_encode_io_pairs = [
     [
         4,
@@ -100,3 +129,67 @@ for my $pair ( @{$light_encode_io_pairs} ) {
     $i++;
 }
 
+my $default_string_destring_vals = [
+    4,
+    'a string',
+    [ 'an', 'array', 'ref' ],
+    { 'a' => 'hash', 'ref' => 17 },
+    { [ 'nested' ], { 'stuff' => 43 } },
+];
+
+$i = 1;
+for my $val ( @{$default_string_destring_vals} ) {
+    is_deeply( $val, destringify( stringify($val) ), "default stringify/destringify test number $i" );
+}
+
+stringify_by( sub { 'string' } );
+is( stringify( [10] ), 'string', 'stringify_by okay' );
+
+destringify_by( sub { [10] } );
+is_deeply( destringify( 'string'), [10], 'destringify_by okay' );
+
+my $dummy;
+is_deeply( monitor_args( 'Nothing', 'Nope',
+    [ 'string', $dummy ] ), [ 2, { 0 => [ 201, 0 ], 1 => [ 201, 1 ] } ]
+); 
+
+monitor_args_by( {
+    'monitor_args' => sub { 5 },
+    'packages' => {
+        'Foo::Bar' => {
+            'monitor_args' => sub { 6 },
+            'subs' => {
+                'foo' => {
+                    'monitor_args' => sub { 7 },
+                }
+            },
+        },
+    },
+} );
+
+
+my @args = ('dummy_val');
+is( monitor_args( 'Bar::Foo', 'foo', \@args ), 5, 'testing gen_arg_key preferences, generic' );
+is( monitor_args( 'Foo::Bar', 'bar', \@args ), 6, 'testing gen_arg_key preferences, package specific' );
+is( monitor_args( 'Foo::Bar', 'foo', \@args ), 7, 'testing gen_arg_key preferences, subroutine specific' );
+
+
+play_args_by( {
+    'play_args' => sub { 5 },
+    'packages' => {
+        'Foo::Bar' => {
+            'play_args' => sub { 6 },
+            'subs' => {
+                'foo' => {
+                    'play_args' => sub { 7 },
+                }
+            },
+        },
+    },
+} );
+
+
+my @args = ('dummy_val');
+is( play_args( 'Bar::Foo', 'foo', \@args ), 5, 'testing gen_arg_key preferences, generic' );
+is( play_args( 'Foo::Bar', 'bar', \@args ), 6, 'testing gen_arg_key preferences, package specific' );
+is( play_args( 'Foo::Bar', 'foo', \@args ), 7, 'testing gen_arg_key preferences, subroutine specific' );
