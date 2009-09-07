@@ -4,7 +4,7 @@ use 5.006001;
 use strict;
 use warnings;
 
-our $VERSION = 0.007_003;
+our $VERSION = 0.008_004;
 
 #Returns the name of the package that objects returned by new are blessed into. For encapuslation
 #purposes this may not be Test::Mimic::Generator. Should be considered protected.

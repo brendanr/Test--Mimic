@@ -12,7 +12,7 @@ use Test::Mimic::Library qw<
 >;
 use Test::Mimic::Generator;
 
-our $VERSION = 0.006_003;
+our $VERSION = 0.008_005;
 
 
 
@@ -111,11 +111,14 @@ sub import {
     if ( @to_record != 0 ) {
         $recording_required = 1;
         require Test::Mimic::Recorder;
-        my $recorder_prefs = { 'save' => $save_to };
+        my %recorder_prefs = %preferences;
+
+        #Only include those packages that need recording.
+        $recorder_prefs{'packages'} = {};
         for my $package (@to_record) {
-            $recorder_prefs->{'packages'}->{$package} = $preferences{'packages'}->{$package};
+            $recorder_prefs{'packages'}->{$package} = $preferences{'packages'}->{$package};
         }
-        Test::Mimic::Recorder->import($recorder_prefs);
+        Test::Mimic::Recorder->import(\%recorder_prefs);
     }
 }
 

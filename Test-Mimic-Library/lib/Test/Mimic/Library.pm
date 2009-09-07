@@ -4,7 +4,7 @@ use 5.006001; # for my $filehandle
 use strict;
 use warnings;
 
-our $VERSION = 0.001_003;
+our $VERSION = 0.011_004;
 
 use Test::Mimic::Library::MonitorScalar;
 use Test::Mimic::Library::MonitorArray;

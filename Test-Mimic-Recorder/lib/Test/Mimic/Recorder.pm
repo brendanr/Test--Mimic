@@ -7,7 +7,6 @@ use 5.006001;   # For open( my $fh, ...
 use strict;
 use warnings;
 
-use Getopt::Long qw<GetOptionsFromArray>;
 use Data::Dump::Streamer;
 use Devel::EvalError ();
 use Cwd qw<abs_path>;
@@ -31,7 +30,7 @@ use Test::Mimic::Library qw(
     ARBITRARY
 );
 
-our $VERSION = 0.009_001;
+our $VERSION = 0.011_002;
 our $SuspendRecording = 0; # Turn off recording.
 my  $done_writing = 0;
 
@@ -46,32 +45,7 @@ my @operation_sequence; # An ordered list of recorded operations. The first oper
                         # subroutine calls in recorded packages. Orderings of various 'scopes' can later be
                         # extracted from this.
 
-#sub import {
-#    die "import should only be used as a method."
-#        if ( ! $_[0]->isa('Test::Mimic::Recorder') );
-#
-#    if ( @_ == 1 ) { # We are using Test::Mimic::Recorder as a library, not to actively monitor a program. #DEPRECATED
-#        $done_writing = 1;
-#    }
-#    else {
-#        shift(@_);
-#
-#        init_records();
-#
-#        # Call _record_package on each package passing along the package and a list of scalars to record.
-#        my @scalars;
-#        GetOptionsFromArray(
-#            \@_, 'f=s' => \$save_to, 's=s' => \@scalars,
-#            '<>' => sub {
-#                @scalars = split( /,/, join( ',', @scalars ) );
-#                _record_package( $_[0], \@scalars );
-#                @scalars = (); # So scalars from one pacakge don't get mixed in with those of another.
-#            },
-#        ) or die "Bad options: $!";
-#        $save_to ||= 'test_mimic.rec';
-#    }
-
-
+# Transient data
 my $save_to;
 
 sub import {
