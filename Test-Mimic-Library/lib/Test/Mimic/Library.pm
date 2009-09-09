@@ -611,7 +611,13 @@ sub _get_type {
     # Each of these helper subroutines takes ( $val, $type ).
     my $scalar_action = sub {
         my $history = [];
-        tie( ${ $_[0] }, 'Test::Mimic::Library::MonitorScalar', $history, $_[0] );
+        if ( defined( my $old_tie = tied( ${ $_[0] } ) ) ) {
+            tie( ${ $_[0] }, 'Test::Mimic::Library::MonitorTiedScalar', $history, $old_tie );
+            print STDERR "\n\ntied tie! $_[0], $$_[0]\n\n";
+        }
+        else {
+            tie( ${ $_[0] }, 'Test::Mimic::Library::MonitorScalar', $history, $_[0] );
+        }
         return [ 'SCALAR', $history ];
     };
     my $simple_action = sub { return [ $_[1], $_[0] ]; };
@@ -623,12 +629,24 @@ sub _get_type {
         'VSTRING'   => $scalar_action,
         'ARRAY'     => sub {
             my $history = [];
-            tie ( @{ $_[0] }, 'Test::Mimic::Library::MonitorArray', $history, $_[0] );
+            if ( defined( my $old_tie = tied( ${ $_[0] } ) ) ) {
+                tie( ${ $_[0] }, 'Test::Mimic::Library::MonitorTiedArray', $history, $old_tie );
+                print STDERR "\n\ntied tie! $_[0], $$_[0]\n\n";
+            }
+            else {
+                tie ( @{ $_[0] }, 'Test::Mimic::Library::MonitorArray', $history, $_[0] );
+            }
             return [ 'ARRAY', $history ];
         },
         'HASH'      => sub {
             my $history = [];
-            tie ( %{ $_[0] }, 'Test::Mimic::Library::MonitorHash', $history, $_[0] );
+            if ( defined( my $old_tie = tied( ${ $_[0] } ) ) ) {
+                tie( ${ $_[0] }, 'Test::Mimic::Library::MonitorTiedHash', $history, $old_tie );
+                print STDERR "\n\ntied tie! $_[0], $$_[0]\n\n";
+            }
+            else {
+                tie ( %{ $_[0] }, 'Test::Mimic::Library::MonitorHash', $history, $_[0] );
+            }
             return [ 'HASH', $history ];
         },
         'GLOB'      => $simple_action,

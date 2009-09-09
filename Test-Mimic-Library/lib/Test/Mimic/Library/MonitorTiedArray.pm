@@ -7,7 +7,7 @@ use base qw<Tie::Array>;
 
 use constant {
     # Instance variables
-    VALUE   => 0,
+    BACKING_VAR => 0,
     HISTORY => 1,
     
     # History fields
@@ -18,11 +18,11 @@ use constant {
 
 # basic methods
 sub TIEARRAY {
-    my ( $class, $history, $val ) = @_;
+    my ( $class, $history, $backing_var ) = @_;
     
     # Initialize instance variables.
     my $self = [];
-    @{ $self->[VALUE] = [] } = @{$val}; # Copy the array
+    $self->[BACKING_VAR] = $backing_var;
     for my $field ( FETCH_F, FETCHSIZE_F, EXISTS_F ) {
         $history->[$field] = [];
     }
@@ -34,7 +34,7 @@ sub TIEARRAY {
 sub FETCH {
     my ( $self, $index ) = @_;
     
-    my $value = $self->[VALUE]->[$index];
+    my $value = $self->[BACKING_VAR]->FETCH($index);
     if ( ! $Test::Mimic::Recorder::SuspendRecording ) {
         my $index_history = ( $self->[HISTORY]->[FETCH_F]->[$index] ||= [] );
         push( @{$index_history}, Test::Mimic::Library::monitor( $value ) );
@@ -46,13 +46,13 @@ sub FETCH {
 sub STORE {
     my ( $self, $index, $value ) = @_;
     
-    $self->[VALUE]->[$index] = $value;
+    $self->[BACKING_VAR]->STORE( $index, $value );
 }
 
 sub FETCHSIZE {
     my ($self) = @_;
     
-    my $size = scalar( @{ $self->[VALUE] } );
+    my $size = $self->[BACKING_VAR]->FETCHSIZE();
     if ( ! $Test::Mimic::Recorder::SuspendRecording ) {
         push( @{ $self->[HISTORY]->[FETCHSIZE_F] }, $size );
     }
@@ -62,21 +62,21 @@ sub FETCHSIZE {
 
 sub STORESIZE {
     my ( $self, $size ) = @_;
-    
-    $#{ $self->[VALUE] } = $size - 1; #Set the index of the last element.
+
+    $self->[BACKING_VAR]->STORESIZE($size);    
 }
 
 # other methods
 sub DELETE {
     my ( $self, $index ) = @_;
     
-    delete $self->[VALUE]->[$index];
+    $self->[BACKING_VAR]->DELETE($index);
 }
 
 sub EXISTS {
     my ( $self, $index ) = @_;
     
-    my $result = exists $self->[VALUE]->[$index];
+    my $result = $self->[BACKING_VAR]->EXISTS($index);
     if ( ! $Test::Mimic::Recorder::SuspendRecording ) {
         my $exists_history = ( $self->[HISTORY]->[EXISTS_F]->[$index] ||= [] );
         push( @{$exists_history}, $result );
@@ -109,11 +109,13 @@ sub CLEAR {
 
 # optional methods
 sub UNTIE {
-    
+    my ($self) = @_;
+    $self->[BACKING_VAR]->UNTIE();
 }
 
 sub DESTROY {
-    
+    my ($self) = @_;
+    $self->[BACKING_VAR]->DESTROY();
 }
 
 1;

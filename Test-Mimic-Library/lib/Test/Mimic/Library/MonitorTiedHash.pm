@@ -7,7 +7,7 @@ use base qw<Tie::Hash>;
 
 use constant {
     # Instance variables
-    VALUE   => 0,
+    BACKING_VAR => 0,
     HISTORY => 1,
     
     # History fields
@@ -18,11 +18,11 @@ use constant {
 };
 
 sub TIEHASH {
-    my ( $class, $history, $val ) = @_;
+    my ( $class, $history, $backing_var ) = @_;
     
     # Initialize instance variables.
     my $self = [];
-    %{ $self->[VALUE] = {} } = %{$val}; # Copy the hash
+    my $self->[BACKING_VAR] = $backing_var;
     for my $field ( FETCH_F, EXISTS_F ) {
         $history->[$field] = {};
     }
@@ -37,13 +37,13 @@ sub TIEHASH {
 sub STORE {
     my ( $self, $key, $value ) = @_;
     
-    $self->[VALUE]->{$key} = $value;
+    $self->[BACKING_VAR]->STORE( $key, $value );
 }
 
 sub FETCH {
     my ( $self, $key ) = @_;
     
-    my $value = $self->[VALUE]->{$key};
+    my $value = $self->[BACKING_VAR]->FETCH($key);
     if ( ! $Test::Mimic::Recorder::SuspendRecording ) {
         my $key_history = ( $self->[HISTORY]->[FETCH_F]->{$key} ||= [] ); 
         push( @{$key_history}, Test::Mimic::Library::monitor( $value ) );
@@ -55,14 +55,19 @@ sub FETCH {
 sub FIRSTKEY {
     my ($self) = @_;
 
-    keys %{ $self->[VALUE] }; # Reset hash iterator.
-    return $self->NEXTKEY($self);
+    my $key = $self->[BACKING_VAR]->FIRSTKEY();
+
+    if ( ! $Test::Mimic::Recorder::SuspendRecording ) {
+        push( @{ $self->[HISTORY]->[KEYS_F] }, $key ); 
+    }
+    
+    return $key;
 }
 
 sub NEXTKEY {
     my ( $self, $last_key ) = @_;
     
-    my $key = each %{ $self->[VALUE] };
+    my $key = $self->[BACKING_VAR]->NEXTKEY($last_key);
 
     if ( ! $Test::Mimic::Recorder::SuspendRecording ) {
         push( @{ $self->[HISTORY]->[KEYS_F] }, $key ); 
@@ -74,7 +79,7 @@ sub NEXTKEY {
 sub EXISTS {
     my ( $self, $key ) = @_;
     
-    my $result = exists $self->[VALUE]->{$key};
+    my $result = $self->[BACKING_VAR]->EXISTS($key);
     if ( ! $Test::Mimic::Recorder::SuspendRecording ) {
         my $exists_history = ( $self->[HISTORY]->[EXISTS_F]->{$key} ||= [] );
         push( @{$exists_history}, $result );
@@ -86,7 +91,7 @@ sub EXISTS {
 sub DELETE {
     my ( $self, $key ) = @_;
     
-    delete $self->[VALUE]->{$key};
+    $self->[BACKING_VAR]->DELETE($key);
 }
 
 # Any non-read inherited operation should not alter the history.
@@ -99,7 +104,7 @@ sub CLEAR {
 sub SCALAR {
     my ( $self ) = @_;
     
-    my $result = scalar %{ $self->[VALUE] };
+    my $result = $self->[BACKING_VAR]->SCALAR();
     if ( ! $Test::Mimic::Recorder::SuspendRecording ) {
         push( @{ $self->[HISTORY]->[SCALAR_F] }, $result );
     }
