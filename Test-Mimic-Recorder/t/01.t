@@ -2,7 +2,7 @@ use strict;
 use warnings;
 
 use Data::Dump::Streamer qw<:undump>;
-use Test::Mimic::Library qw<destringify>;
+use Test::Mimic::Library qw<destringify decode LIST_CONTEXT VOID_CONTEXT SCALAR_CONTEXT DATA ENCODE_TYPE RETURN>;
 
 use Test::More 'no_plan';
 
@@ -10,6 +10,7 @@ use Test::More 'no_plan';
 BEGIN {
     unshift( @INC, 't' );
     use_ok( 'Test::Mimic::Recorder', {
+        'key' => sub { 'order' },
         'packages'  => {
             'RecordMe'  => {
                 'scalars'   => [ qw<scalar_state> ],
@@ -245,14 +246,7 @@ for my $key ( 'Gangsters', 'Ojos Sexys', 'Spiderwebs' ) {
 }
 
 # Check a glob
-my $key = "\$TML_destringify_val = [\n                         202,\n                 ".
-    "        [\n                           'ARRAY',\n                          ".
-    " [\n                             [\n                               200,\n  ".
-    "                             'RecordMe'\n                             ],\n".
-    "                             [\n                               200,\n     ".
-    "                          'Does this return grandma?'\n                  ".
-    "           ]\n                           ]\n                         ]\n   ".
-    "                    ];\n";
+my $key = 'order';                           # UPDATE: less brittle!
                                              # So very very very very very very very brittle... (The number of very's is the number
                                              # of times this code has bitten me in the ass. NEW CONCERN: Our unary
                                              # counting system is becoming problematic. Perhaps we can switch to
@@ -266,5 +260,49 @@ for my $info ( [ 'RecordMe', 'Package' ], [ 'grandma', 'Symbol' ], [ 'CODE', 'Co
     $table = $table->{$key};
 }
 
-ok( $table->[0]->[1]->[0] == Test::Mimic::Recorder::RETURN(), 'Correct behavior type.' );
-is( $table->[0]->[1]->[1]->[1], 'grandma', 'Correct return' );
+# 1 is simply the index of the result of this particular call. (0 contains the monitor arg info for this
+# call, 2 the monitor arg info for the next call, 3 the result of the next call and so on.)
+ok( $table->[SCALAR_CONTEXT]->[1]->[ENCODE_TYPE] == RETURN, 'Correct behavior type.' );
+is( decode( $table->[SCALAR_CONTEXT]->[1]->[DATA] ), 'grandma', 'Correct return' );
+
+# Check another glob and this time pay special attention to list vs. scalar vs. void context.
+$key = 'order';
+$table = $typeglobs;
+for my $info ( [ 'RecordMe', 'Package' ], [ 'pos_or_neg', 'Symbol' ], [ 'CODE', 'Code' ], [ $key, 'Arg' ] ) {
+    my ($key, $type) = @{$info};
+    ok( exists( $table->{$key} ), "$type exists" );
+    $table = $table->{$key};
+}
+
+# Void
+for my $i ( 0 .. 2 ) {
+    ok( $table->[VOID_CONTEXT]->[ $i * 2 + 1 ]->[ENCODE_TYPE] == RETURN, "Correct behavior type. Test $i" );
+    ok( ! defined( $table->[VOID_CONTEXT]->[ $i * 2 + 1 ]->[DATA] ), 'Correct return. (Void)' );
+}
+
+# Scalar and list
+my $results = [
+    [
+        SCALAR_CONTEXT,
+        [
+            'positive',
+            'zero',
+            'negative',
+        ],
+    ],
+    [
+        LIST_CONTEXT,
+        [
+            [ 'positive' ],
+        ],
+    ],
+];
+for my $tuple ( @{$results} ) {
+    my ( $index, $results ) = @{$tuple};
+    for my $val ( @{$results} ) {
+        shift( @{ $table->[$index] } ); #Toss monitor arg info
+        my ( $type, $data ) = @{ shift( @{ $table->[$index] } ) };
+        ok ( $type == RETURN, "Correct behavior type. pos_or_neg $val" );
+        is_deeply( decode($data), $val, "Correct return. pos_or_neg $val" );
+    }
+}

@@ -224,6 +224,12 @@ sub _record_package {
                 $stored_result = [ EXCEPTION, encode( $exception, 0 ) ];
             }
             
+            print STDERR "\n\n\npack $package, sub $sub, context index: $context_index\n"; #DEBUG 
+            my ($d, $e, $f) = caller; #DEBUG
+            print STDERR "$d, $e, $f\n"; #DEBUG
+
+            print STDERR Data::Dump::Streamer::Dump( $context_to_result )->Out() . "\n\n\n"; #DEBUG
+
             # Maintain records
             push( @operation_sequence, [ $package, CODE_E, $sub, $arg_key, $context_index ] );
             push( @{ $context_to_result->[$context_index] ||= [] }, ( $arg_signature, $stored_result ) );
