@@ -4,7 +4,7 @@ use 5.006001; # for my $filehandle
 use strict;
 use warnings;
 
-our $VERSION = 0.011_004;
+our $VERSION = 0.011_005;
 
 use Test::Mimic::Library::MonitorScalar;
 use Test::Mimic::Library::MonitorArray;
@@ -13,8 +13,74 @@ use Test::Mimic::Library::PlayScalar;
 use Test::Mimic::Library::PlayArray;
 use Test::Mimic::Library::PlayHash;
 
-use Data::Dump::Streamer qw<:undump Dump regex>;
 use Scalar::Util qw<blessed refaddr reftype weaken readonly>;
+
+#use Data::Dump::Streamer if possible, otherwise Data::Dumper and ad hoc replacements.
+BEGIN {
+    if ( eval { require Data::Dump::Streamer; 1 } ) {
+        Data::Dump::Streamer->import( qw<:undump Dump regex> );
+
+        # Accepts a single argument. Returns true iff the argument is a regular expression created by qr.
+        *_is_pattern = sub { return scalar regex( $_[0] ); };
+
+        # Accepts a single argument. Returns a string form of this argument that can be inverted
+        # (approximately) with _default_destringifier.
+        *_default_stringifier = sub {
+            return scalar Dump( $_[0] )->Names('TML_destringify_val')->KeyOrder('', 'lexical')->Out();
+        }; 
+        # The horrible name is my attempt to avoid collisions with variables from closures. Sadly, DDS doesn't
+        # allow package scoped names.
+
+        # Accepts a string returned by _default_stringifier. Returns an approximation to the original value.
+        *_default_destringifier = sub {
+            my $TML_destringify_val;
+            eval( $_[0] . "; 1" )
+                or die "Unable to eval the string: $_[0]\nwith error: $@";
+            return $TML_destringify_val;
+        };
+    }
+    else {
+        require Data::Dumper;
+        Data::Dumper->import();
+
+        # Accepts a single argument. Returns true if the argument is a regular expression created by qr that
+        # is not blessed. If it is blessed returns true iff the argument was blessed into the Regexp class.
+        # Returns false in all other cases. In other words, this gives false positives for non qr refs
+        # blessed into Regexp and false negatives for qr refs blessed into any other package.
+ 
+        # NOTE: This is a major problem if we need to store qr refs blessed into other packages. We will
+        # attempt to dereference the qr object and tie the result. This will cause our code to die. False
+        # positives will merely cause incomplete recording and punt the responsibility of preserving the
+        # value to the stringifier.
+        *_is_pattern = sub {
+            my $type = ref( $_[0] );
+            if ( defined($type) ) {
+                my $class = blessed( $_[0] );
+                if ( defined($class) ) {
+                    return $class eq 'Regexp';
+                }
+                else {
+                    return $type eq 'Regexp';
+                }
+            }
+            else {
+                return ();
+            }
+        };
+
+        # Accepts a single argument. Returns a string form of this argument that can be inverted
+        # (approximately) with _default_destringifier.
+        *_default_stringifier = sub { return scalar Dumper( $_[0] ); };
+
+        # Accepts a string returned by _default_stringifier. Returns an approximation to the original value.
+        *_default_destringifier = sub {
+            my $VAR1;
+            eval( $_[0] . "; 1" )
+                or die "Unable to eval the string: $_[0]\nwith error: $@";
+            return $VAR1;
+        };
+    }
+}
 
 require Exporter;
 
@@ -191,11 +257,6 @@ sub descend {
     chdir($dir) or die "Could not change the current working directory: $!";
 }
 
-
-#print STDERR "key: $key\n";
-#my($a,$b,$c)=caller;print STDERR "$a, $b, $c\n";
-#print STDERR "behave! " . Data::Dump::Streamer::Dump($behavior)->Out();
-
 sub execute {
     my ( $package, $subroutine, $behavior, $args ) = @_;
 
@@ -252,11 +313,6 @@ sub execute {
     else {
         die "Bad result type <$result_type>. Package: $package, Subroutine: $subroutine, Key: $key";
     }
-}
-
-# Accepts a single argument. Returns true iff the argument is a regular expression created by qr.
-sub _is_pattern {
-    return regex( $_[0] );
 }
 
 {
@@ -396,36 +452,21 @@ sub get_id {
 }
 
 {
-    my $stringifier = sub {
-        return scalar Dump( $_[0] )->Names('TML_destringify_val')->KeyOrder('', 'lexical')->Out();
-    };
-    # The horrible name is my attempt to avoid collisions with variables from closures. Sadly, DDS doesn't
-    # allow package scoped names.
+    my $stringifier = \&_default_stringifier;
 
     sub stringify_by {
         $stringifier = $_[0];
     }
 
     # Given an encoded element returns a string version. Should be suitable for use as a key in a hash as well as
-    # being invertible with destringify. Subclass Test::Mimic::Recorder to stringify with your preferred library.
-    #
-    # TODO: Will need to use SortKeys from Data::Dump::Streamer if we start allowing unblessed hashes to be
-    # encoded. This is necessary because they may be used in an argument list and these need to match exactly
-    # from recording to playback. _encode currently will encode hashes, but the only places where we encode as
-    # opposed to monitor are in argument lists and return lists (and only for one 'level'), so this is not at
-    # present a problem.
+    # being invertible with destringify.
     sub stringify {
         return &{$stringifier};
     }
 }
 
 {
-    my $destringifier = sub {
-        my $TML_destringify_val;
-        eval( $_[0] . "; 1" )
-            or die "Unable to eval the string: $_[0]\nwith error: $@";
-        return $TML_destringify_val;
-    };
+    my $destringifier = \&_default_destringifier;
 
     sub destringify_by {
         $destringifier = $_[0];
