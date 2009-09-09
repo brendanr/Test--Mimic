@@ -1,6 +1,5 @@
 use Test::More 'no_plan';
 
-use Data::Dump::Streamer qw< Dump >;
 use Cwd qw<abs_path>;
 BEGIN {
     use_ok( 'Test::Mimic::Library', qw<
@@ -56,11 +55,22 @@ is_deeply( get_references(), [], 'a get_references() call after init_records() s
 ok( Test::Mimic::Library::_is_pattern( qr/foo/ ), 'positive pattern identification' );
 ok( ! Test::Mimic::Library::_is_pattern( 4 ), 'negative pattern identification' );
 
-is( gen_arg_key( 'Foo::Bar', 'foo', 4 ), '$TML_destringify_val = [' . "\n" .
-                                         "                         200,\n" .
-                                         "                         4\n" .
-                                         "                       ];\n",
-'testing default key generator' );
+my $key_gen_output;
+if ( $INC{'Data/Dump/Streamer.pm'} ) {
+    $key_gen_output = "\$TML_destringify_val = [\n" .
+                      "                         200,\n" .
+                      "                         4\n" .
+                      "                       ];\n";
+
+}
+else {
+    $key_gen_output = "\$VAR1 = [\n" .
+                      "          200,\n" . 
+                      "          4\n" .
+                      "        ];\n";
+}
+
+is( gen_arg_key( 'Foo::Bar', 'foo', 4 ), $key_gen_output, 'testing default key generator' );  
 
 gen_arg_key_by( {
     'key' => sub { 5 },

@@ -7,7 +7,6 @@ use 5.006001;   # For open( my $fh, ...
 use strict;
 use warnings;
 
-use Data::Dump::Streamer;
 use Devel::EvalError ();
 use Cwd qw<abs_path>;
 use Scalar::Util qw<reftype>;
@@ -110,12 +109,12 @@ sub _record_package {
             my $pointer_type = reftype($typeglob);
             if ( $pointer_type eq 'GLOB' ) {
                 # Tie arrays and hashes.
-                for my $slot ( 'ARRAY', 'HASH' ) {
-                    my $reference = *{$typeglob}{$slot};
-                    if ( defined $reference ) {
-                        $fake_typeglob->{$slot} = encode( $reference, 0 );
-                    }
-                }
+#                for my $slot ( 'ARRAY', 'HASH' ) {  #comment block is for DEBUG
+#                    my $reference = *{$typeglob}{$slot};
+#                    if ( defined $reference ) {
+#                        $fake_typeglob->{$slot} = encode( $reference, 0 );
+#                    }
+#                }
             }
             # Perl apparently sometimes stores subroutine stub declarations as simple
             # scalars. We would like to leave these alone. (See the Perl 5.10
