@@ -14,24 +14,10 @@ use Test::Mimic::Generator;
 
 our $VERSION = 0.008_005;
 
-
-
-
-
-
 BEGIN { #DEBUG
 use Carp;
 $SIG{ __DIE__ } = sub { Carp::confess( @_ ) };
 }
-
-
-
-
-
-
-
-
-
 
 # Preloaded methods go here.
 
@@ -102,7 +88,6 @@ sub import {
     my @to_record;
     for my $package_to_mimic ( keys %{ $preferences{'packages'} } ) {
         if ( ! require_from( $package_to_mimic, $lib_dir ) ) {
-            print STDERR "couldn't include $package_to_mimic: $@\n"; #DEBUG
             push( @to_record, $package_to_mimic );
         }
     }

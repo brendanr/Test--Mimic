@@ -613,7 +613,6 @@ sub _get_type {
         my $history = [];
         if ( defined( my $old_tie = tied( ${ $_[0] } ) ) ) {
             tie( ${ $_[0] }, 'Test::Mimic::Library::MonitorTiedScalar', $history, $old_tie );
-            print STDERR "\n\ntied tie! $_[0], $$_[0]\n\n";
         }
         else {
             tie( ${ $_[0] }, 'Test::Mimic::Library::MonitorScalar', $history, $_[0] );
@@ -629,9 +628,8 @@ sub _get_type {
         'VSTRING'   => $scalar_action,
         'ARRAY'     => sub {
             my $history = [];
-            if ( defined( my $old_tie = tied( ${ $_[0] } ) ) ) {
-                tie( ${ $_[0] }, 'Test::Mimic::Library::MonitorTiedArray', $history, $old_tie );
-                print STDERR "\n\ntied tie! $_[0], $$_[0]\n\n";
+            if ( defined( my $old_tie = tied( @{ $_[0] } ) ) ) {
+                tie( @{ $_[0] }, 'Test::Mimic::Library::MonitorTiedArray', $history, $old_tie );
             }
             else {
                 tie ( @{ $_[0] }, 'Test::Mimic::Library::MonitorArray', $history, $_[0] );
@@ -640,9 +638,8 @@ sub _get_type {
         },
         'HASH'      => sub {
             my $history = [];
-            if ( defined( my $old_tie = tied( ${ $_[0] } ) ) ) {
-                tie( ${ $_[0] }, 'Test::Mimic::Library::MonitorTiedHash', $history, $old_tie );
-                print STDERR "\n\ntied tie! $_[0], $$_[0]\n\n";
+            if ( defined( my $old_tie = tied( %{ $_[0] } ) ) ) {
+                tie( %{ $_[0] }, 'Test::Mimic::Library::MonitorTiedHash', $history, $old_tie );
             }
             else {
                 tie ( %{ $_[0] }, 'Test::Mimic::Library::MonitorHash', $history, $_[0] );

@@ -109,11 +109,14 @@ sub _record_package {
             my $pointer_type = reftype($typeglob);
             if ( $pointer_type eq 'GLOB' ) {
                 # Tie arrays and hashes.
-                for my $slot ( 'ARRAY', 'HASH' ) {  #comment block is for DEBUG
-                    my $reference = *{$typeglob}{$slot};
-                    if ( defined $reference ) {
-                        $fake_typeglob->{$slot} = encode( $reference, 0 );
-                    }
+                my $reference = *{$typeglob}{'ARRAY'};
+                if ( defined($reference) ) {
+                    $fake_typeglob->{'ARRAY'} = encode( $reference, 0 );
+                }
+
+                $reference = *{$typeglob}{'HASH'};
+                if ( defined($reference) && ! $symbol =~ m/^\w+::$/ ) { #Avoid tying symbol tables!
+                    $fake_typeglob->{'HASH'} = encode( $reference, 0 );
                 }
             }
             # Perl apparently sometimes stores subroutine stub declarations as simple
@@ -243,11 +246,12 @@ sub _record_package {
         };
         
         # Handle prototypes
-        my $replacement = $wrapper_sub;
+        my $replacement;
         my $proto = prototype($original_sub);
-        if ( defined($proto) ) {
-            eval "\$replacement = sub ($proto) { return \$wrapper_sub->(\@_); };"; 
-        }
+        $replacement = eval "package $package; sub " . ( defined($proto) ? "($proto) " : '' )
+            . "{ return \$wrapper_sub->(\@_); };";
+        # Saying 'package' in the eval allows us to record subroutines used by sort. If we don't $a and $b
+        # are not imported properly.
         $extra{$package}{'PROTOTYPES'}{$sub} = $proto;
          
         # Redefine the original subroutine
