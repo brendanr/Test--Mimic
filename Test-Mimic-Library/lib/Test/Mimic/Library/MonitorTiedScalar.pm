@@ -1,4 +1,4 @@
-package Test::Mimic::Library::MonitorScalar;
+package Test::Mimic::Library::MonitorTiedScalar;
 
 use strict;
 use warnings;
@@ -14,7 +14,7 @@ sub TIESCALAR {
     
     # Initialize instance variables.
     my $self = [];
-    $self->[BACKING_VAR] = $backing_var
+    $self->[BACKING_VAR] = $backing_var;
     $self->[HISTORY] = $history;
     
     bless( $self, $class );

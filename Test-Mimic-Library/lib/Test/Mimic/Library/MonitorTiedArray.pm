@@ -1,4 +1,4 @@
-package Test::Mimic::Library::MonitorArray;
+package Test::Mimic::Library::MonitorTiedArray;
 
 use strict;
 use warnings;

@@ -1,4 +1,4 @@
-package Test::Mimic::Library::MonitorHash;
+package Test::Mimic::Library::MonitorTiedHash;
 
 use strict;
 use warnings;
@@ -22,7 +22,7 @@ sub TIEHASH {
     
     # Initialize instance variables.
     my $self = [];
-    my $self->[BACKING_VAR] = $backing_var;
+    $self->[BACKING_VAR] = $backing_var;
     for my $field ( FETCH_F, EXISTS_F ) {
         $history->[$field] = {};
     }

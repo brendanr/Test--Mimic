@@ -1,9 +1,6 @@
 package Test::Mimic::Recorder;
 
 use 5.006001;   # For open( my $fh, ...
-                # Note: The above line is currently lying. We actually need 5.10 for the
-                # GetOptionsFromArray subroutine from Getopt::Long. We are eventually aiming
-                # for compatibility with 5.006001.
 use strict;
 use warnings;
 
@@ -29,7 +26,7 @@ use Test::Mimic::Library qw(
     ARBITRARY
 );
 
-our $VERSION = 0.011_002;
+our $VERSION = 0.011_003;
 our $SuspendRecording = 0; # Turn off recording.
 my  $done_writing = 0;
 
@@ -347,79 +344,6 @@ of its elements read and so forth. Writes are not recorded.
 
 =over 4
 
-=item import LIST
-
-Accepts a LIST of packages to record. The file to record to can be specified with -f. Scalars to monitor from
-each package can be specified by immediately preceding the package name in the LIST with -s scal_a,scal_b.
-The $ sigil should not be included in the scalar name.
-
-Additional options describing the volatility of particular arguments, package variables, etc. are likely to
-be incorporated shortly. A hash based import will also be made available for older versions of Perl.
-
-=item finish
-
-Writes all data recorded so far to disk immediately. May be overwritten later. Recorded data is saved
-automatically, so this is probably only useful for testing purposes. 
-
-=back
-
-=head3 Protected
-
-Test::Mimic::Recorder should be subclassed and the following methods overridden to modify the manner in which
-the recorded data is stored as a string and hence written to a file. The default behavior is to use
-Data::Dump::Streamer.
-
-=over 4
-
-=item stringify($value)
-
-Accepts a single scalar. Returns the scalar as a string. Suitable for use as a hash key as well
-as being invertible with destringify. Within reason this should be independent of any particular run of the
-program.
-
-=item destringify($stringified_value)
-
-The inverse of stringify.
-
-=back
-
-=head3 Private to the Test::Mimic Project
-
-Only Test::Mimic, Test::Mimic::Generator, Test::Mimic::Recorder and Test::Mimic::Verifier should attempt to
-call these subroutines.
-
-=over 4
-
-=item encode($records, $value, $is_volatile, $at_level )
-
-$records is an array reference initially containing [ [], {}, {} ]. The same $records variable should be used
-during a given recording session. In a playback session only the first element must be from a recording
-session (or rather reconstructed from a recording session). The hash references can again initially be {}.
-
-$value can be either a reference or a simple scalar. encode will attempt to encapsulate
-the value in such a manner that it can be stringified safely. This encapsulated value is returned as an array
-reference.
-
-Care is taken to preserve the uniqueness of references (specifically blessed references), so that the
-behavior of subroutines dependent on particular references is preserved as well. The obvious use of this is
-to allow object methods to be handled properly.
-
-When a mutable reference is encoded we will begin recording a history of its dereferenced value. This allows
-the user to recreate (approximately) the state of the reference over time. This process is recursive and even
-complex nested and circular structures should be handled.
-
-However, some action is required on the part of the user. $is_volatile should be set to true if mutable
-data is to be monitored. Additionally, $at_level should be set to the highest level where mutable data is to
-be expected. For instance, a level of 0 would mean that the passed value itself should be monitored. If an
-array reference was passed along with a level of 1 then the elements of the array would be monitored.
-Additionally, any circular references need to be handled as mutable data.
-
-=item decode
-
-The inverse of encode.
-
-=back
-
 =head2 EXPORT
 
 None by default.
@@ -427,8 +351,8 @@ None by default.
 =head1 SEE ALSO
 
 Test::Mimic
+Test::Mimic::Library
 Test::Mimic::Generator
-Test::Mimic::Verifier
 
 =head1 AUTHOR
 

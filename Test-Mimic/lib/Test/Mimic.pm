@@ -12,12 +12,7 @@ use Test::Mimic::Library qw<
 >;
 use Test::Mimic::Generator;
 
-our $VERSION = 0.008_005;
-
-BEGIN { #DEBUG
-use Carp;
-$SIG{ __DIE__ } = sub { Carp::confess( @_ ) };
-}
+our $VERSION = 0.008_006;
 
 # Preloaded methods go here.
 
@@ -85,11 +80,21 @@ sub import {
 
     # Attempt to load mimicked versions of each package. Note those that have not been recorded.
     my $lib_dir = $save_to . '/lib';
+    my $playback_stage = 0;
     my @to_record;
     for my $package_to_mimic ( keys %{ $preferences{'packages'} } ) {
         if ( ! require_from( $package_to_mimic, $lib_dir ) ) {
             push( @to_record, $package_to_mimic );
         }
+        else {
+            $playback_stage = 1; 
+        } 
+    }
+
+    # Prevent playback/recording conflicts.
+    if ( $playback_stage && @to_record > 0 ) {
+        die "The playback stage and the recording stage can not coincide. Either delete the current" .
+            "recordings or stop mimicking the following package(s): @to_record";
     }
 
     # Record the missing packages.
@@ -193,7 +198,7 @@ scalar that will later be passed to the subroutine keyed by 'play_args'.
 
 'play_args' => a reference to a subroutine that accepts first a reference to an array of arguments and then
 the scalar returned by the subroutine keyed by 'monitor_args'. It should hijack the desired arguments. You
-will probably want to apply Test::Mimic::Library::play.
+will probably want to apply the soon to be written Test::Mimic::Library::hijack.
 
 'scalars' => a reference to an array of package scalar names that you wish to record.
 

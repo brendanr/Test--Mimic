@@ -12,6 +12,9 @@ use Test::Mimic::Library::MonitorHash;
 use Test::Mimic::Library::PlayScalar;
 use Test::Mimic::Library::PlayArray;
 use Test::Mimic::Library::PlayHash;
+use Test::Mimic::Library::MonitorTiedScalar;
+use Test::Mimic::Library::MonitorTiedArray;
+use Test::Mimic::Library::MonitorTiedHash;
 
 use Scalar::Util qw<blessed refaddr reftype weaken readonly>;
 
