@@ -178,7 +178,7 @@ monitor_args_by( {
 } );
 
 
-my @args = ('dummy_val');
+@args = ('dummy_val');
 is( monitor_args( 'Bar::Foo', 'foo', \@args ), 5, 'testing gen_arg_key preferences, generic' );
 is( monitor_args( 'Foo::Bar', 'bar', \@args ), 6, 'testing gen_arg_key preferences, package specific' );
 is( monitor_args( 'Foo::Bar', 'foo', \@args ), 7, 'testing gen_arg_key preferences, subroutine specific' );
@@ -199,7 +199,7 @@ play_args_by( {
 } );
 
 
-my @args = ('dummy_val');
+@args = ('dummy_val');
 is( play_args( 'Bar::Foo', 'foo', \@args ), 5, 'testing gen_arg_key preferences, generic' );
 is( play_args( 'Foo::Bar', 'bar', \@args ), 6, 'testing gen_arg_key preferences, package specific' );
 is( play_args( 'Foo::Bar', 'foo', \@args ), 7, 'testing gen_arg_key preferences, subroutine specific' );

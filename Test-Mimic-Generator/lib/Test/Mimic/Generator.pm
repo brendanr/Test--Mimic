@@ -1,10 +1,10 @@
 package Test::Mimic::Generator;
 
-use 5.006001;
+use 5.006001; #for open( my $fh...
 use strict;
 use warnings;
 
-our $VERSION = 0.008_004;
+our $VERSION = 0.009_005;
 
 #Returns the name of the package that objects returned by new are blessed into. For encapuslation
 #purposes this may not be Test::Mimic::Generator. Should be considered protected.
@@ -269,6 +269,8 @@ Test::Mimic::Generator - Perl module for generating mock perl packages from data
 
 =head1 DESCRIPTION
 
+=over
+
 =item Test::Mimic::Generator->new()
 
 Constructs and returns a new generator object.
@@ -298,6 +300,8 @@ require that Test::Mimic::Library be in a certain state. Specifically,
 Test::Mimic::Library::load_records("$write_directory/history_for_playback.rec") should have been called.
 Typically this is handled by the controller, Test::Mimic, but if you are using the files independently you
 must do this yourself.
+
+=back
 
 =head2 EXPORT
 

@@ -26,7 +26,7 @@ use Test::Mimic::Library qw(
     ARBITRARY
 );
 
-our $VERSION = 0.011_003;
+our $VERSION = 0.012_005;
 our $SuspendRecording = 0; # Turn off recording.
 my  $done_writing = 0;
 
@@ -112,7 +112,7 @@ sub _record_package {
                 }
 
                 $reference = *{$typeglob}{'HASH'};
-                if ( defined($reference) && ! $symbol =~ m/^\w+::$/ ) { #Avoid tying symbol tables!
+                if ( defined($reference) && ! ($symbol =~ m/^\w+::$/) ) { #Avoid tying symbol tables!
                     $fake_typeglob->{'HASH'} = encode( $reference, 0 );
                 }
             }
@@ -324,14 +324,38 @@ conjunction with Test::Mimic.
 
 =head1 SYNOPSIS
 
-  use Test::Mimic::Recorder qw< -f recording47 -s scalar1,scalar2 Package1 -s scalar_a,scalar_b PackageA >;
+  # Record the Foo::Bar package
+  use Test::Mimic::Recorder {
+      'save'      => '.test_mimic_recorder_data',
+      'string'    => sub {}, # The sub {} construction simply represents a subroutine reference.
+      'destring'  => sub {}, # See below for appropriate contracts.
+
+      'key'           => sub {},
+      'monitor_args'  => sub {},
+
+      'packages'  => {
+          'Foo::Bar'  => {
+              'scalars'   => [ qw< x y z > ],
+
+              'key'           => sub {},
+              'monitor_args'  => sub {},
+
+              'subs' => {
+                  'foo' => {
+                      'key'           => sub {},
+                      'monitor_args'  => sub {},
+                  },
+              },
+          },
+      },
+  }; 
 
 =head1 DESCRIPTION
 
 Test::Mimic::Recorder allows a user to monitor the behavior of a set of packages well enough to recreate
-that behavior at a later date with reasonable fidelity. Each subroutine, package array and package hash is
-monitored. Package scalars will be monitored if specified or if the package inherits from Exporter and they
-appear in the @EXPORT or @EXPORT_OK arrays.
+that behavior at a later date with reasonable fidelity. Each subroutine, package array and package hash
+(excepting symbol tables) is monitored. Package scalars will be monitored if specified or if the package
+inherits from Exporter and they appear in the @EXPORT or @EXPORT_OK arrays.
 
 For each quadruple of package, subroutine, argument and context a history of results will be stored. These
 results can consist of either return values or exceptions. Package variables have their history stored in a
@@ -343,6 +367,24 @@ of its elements read and so forth. Writes are not recorded.
 =head2 SUBROUTINES
 
 =over 4
+
+=item Test::Mimic::Recorder->import($preferences)
+
+The $preferences hash reference passed to import is fairly simply and the majority of its structure can be
+deduced from the synopsis above. For more information see the documentation for Test::Mimic.
+
+In addition to this $preferences may contain the key 'test_mimic' at the top level. If its value is defined
+Test::Mimic::Recorder will assume that it is being used by Test::Mimic. The effect of this is to prevent
+Test::Mimic::Recorder from reloading key generators and the like. Only the package names and the scalar lists
+will be used from $preferences. This should generally not be used by users directly. In short, ignore the
+above paragraph unless you randomly decided to put 'test_mimic' into your hash.
+
+=item finish()
+
+Writes all information recorded so far to disk. If called nothing will be written at the end of execution
+automatically. You can, however, call finish again.
+
+=back
 
 =head2 EXPORT
 
@@ -356,13 +398,15 @@ Test::Mimic::Generator
 
 =head1 AUTHOR
 
-Brendan Roof, E<lt>broof@whitepages.comE<gt>
+Concept by Tye McQueen.
+
+Development by Brendan Roof, E<lt>brendanroof@gmail.comE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
 Copyright (C) 2009 by Brendan Roof.
 
-Made possible by a generous contribution from WhitePages Inc.
+Made possible by WhitePages Inc.
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself, either Perl version 5.8.8 or,

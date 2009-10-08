@@ -6,6 +6,7 @@ use Test::More 'no_plan';
 # use the recorded package via the controller.
 BEGIN {
     use Test::Mimic {
+        'key' => sub {'order'},
         'packages' => {
             'RecordMe' => {},
         },

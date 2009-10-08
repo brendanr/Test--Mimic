@@ -1,6 +1,5 @@
 package Test::Mimic;
 
-use 5.006001; # For Test::Mimic::Recorder
 use strict;
 use warnings;
 
@@ -12,7 +11,7 @@ use Test::Mimic::Library qw<
 >;
 use Test::Mimic::Generator;
 
-our $VERSION = 0.008_006;
+our $VERSION = 0.009_007;
 
 # Preloaded methods go here.
 
@@ -172,7 +171,7 @@ will use the recorded data to simulate the mimicked packages. This is the playba
 
 =over
 
-=item import($preferences)
+=item Test::Mimic->import($preferences)
 
 The $preferences hash reference passed to import is fairly simply and the majority of its structure can be
 deduced from the synopsis above. Several of the elements themselves, however, require explanation.
@@ -206,6 +205,8 @@ will probably want to apply the soon to be written Test::Mimic::Library::hijack.
 possible will be used in each case. Also, all subroutines, arrays and hashes in a package will be recorded.
 
 =cut
+
+=back
 
 =head2 EXPORT
 

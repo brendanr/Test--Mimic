@@ -4,7 +4,7 @@ use 5.006001; # for my $filehandle
 use strict;
 use warnings;
 
-our $VERSION = 0.011_005;
+our $VERSION = 0.012_006;
 
 use Test::Mimic::Library::MonitorScalar;
 use Test::Mimic::Library::MonitorArray;
@@ -339,7 +339,7 @@ sub execute {
     # Now suppose that in the playback stage the call order is reversed. The hash reference isn't named until
     # the call to foo, so there is no way bar can recognize it.
     #
-    # NOTE: Or maybe scratch all of that. The above problem sucks, but the alternative is worse. Suppose we
+    # NOTE: Or maybe SCRATCH ALL OF THAT. The above problem sucks, but the alternative is worse. Suppose we
     # do a _light_encode and then a stringification. If we played the object into existence then it is tied.
     # If it is tied and we examine it we will consume it's output. Even we added logic to halt the
     # consumption we don't have access to the most recent state of the object. Similarly, in the record phase

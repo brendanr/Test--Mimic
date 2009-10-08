@@ -1,7 +1,6 @@
 use strict;
 use warnings;
 
-use Data::Dump::Streamer qw<:undump>;
 use Test::Mimic::Library qw<destringify decode LIST_CONTEXT VOID_CONTEXT SCALAR_CONTEXT DATA ENCODE_TYPE RETURN>;
 
 use Test::More 'no_plan';
@@ -31,6 +30,13 @@ my @calls;
 
 $dummy = RecordMe::PI;
 $dummy = RecordMe::ARR;
+
+# In 5.10 these won't be treated as calls, but earlier they will.
+# Not sure about 5.9.
+if ( $] < 5.010000 ) {
+    push( @calls, 'PI' );
+    push( @calls, 'ARR' );
+}
 
 # Access and manipulate package variables.
 
@@ -246,13 +252,7 @@ for my $key ( 'Gangsters', 'Ojos Sexys', 'Spiderwebs' ) {
 }
 
 # Check a glob
-my $key = 'order';                           # UPDATE: less brittle!
-                                             # So very very very very very very very brittle... (The number of very's is the number
-                                             # of times this code has bitten me in the ass. NEW CONCERN: Our unary
-                                             # counting system is becoming problematic. Perhaps we can switch to
-                                             # binary, e.g. extremely very would be 2, extremely very extremely would
-                                             # be 5 and so on.)
-
+my $key = 'order';
 my $table = $typeglobs;
 for my $info ( [ 'RecordMe', 'Package' ], [ 'grandma', 'Symbol' ], [ 'CODE', 'Code' ], [ $key, 'Arg' ] ) {
     my ($key, $type) = @{$info};
